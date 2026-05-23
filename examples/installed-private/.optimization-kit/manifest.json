@@ -1,0 +1,73 @@
+{
+  "kit": "codebase-optimization-kit",
+  "kit_version": "0.1.0",
+  "schema_version": "0.1",
+  "workspace_type": "temporary",
+  "intended_lifetime": "single optimization pass",
+  "installed_at": "2026-05-24",
+  "target_dir": ".optimization-kit",
+  "private_workspace": true,
+  "github_templates": false,
+  "safe_to_delete_after": "final summary is exported and accepted changes are merged",
+  "ownership": {
+    "kit_owned_paths": [
+      "AGENTS.merge-snippet.md",
+      "AGENTS.optimization.md",
+      "SAFE_TO_DELETE.md",
+      "START_HERE.md",
+      "language-adapters/README.md",
+      "language-adapters/cpp.md",
+      "language-adapters/go.md",
+      "language-adapters/java.md",
+      "language-adapters/python.md",
+      "language-adapters/rust.md",
+      "language-adapters/typescript.md",
+      "manifest.json",
+      "roles/README.md",
+      "scoring/README.md",
+      "scoring/confidence.md",
+      "scoring/impact.md",
+      "scoring/priority.md",
+      "scoring/risk-policy.md",
+      "scoring/risk.md",
+      "status.md",
+      "templates/README.md",
+      "templates/context-packet.template.md",
+      "templates/decision-record.template.md",
+      "templates/durable-knowledge-promotion-proposal.template.md",
+      "templates/final-summary.template.md",
+      "templates/finding.template.md",
+      "templates/implementation-packet.template.md",
+      "templates/rollback-plan.template.md",
+      "workflows/01-discovery.md",
+      "workflows/02-risk-and-evidence.md",
+      "workflows/03-implementation.md",
+      "workflows/04-validation-rollback-archive.md",
+      "workflows/README.md"
+    ],
+    "github_template_paths": [
+      ".github/PULL_REQUEST_TEMPLATE/optimization.md",
+      ".github/ISSUE_TEMPLATE/optimization_finding.md",
+      ".github/ISSUE_TEMPLATE/refactor_proposal.md"
+    ],
+    "protected_paths": [
+      "workspace/",
+      "workspace/maps/",
+      "workspace/findings/",
+      "workspace/reports/",
+      "workspace/context-packets/",
+      "workspace/implementation-packets/",
+      "workspace/decisions/",
+      "workspace/private/",
+      "workspace/cache/",
+      "workspace/raw/"
+    ],
+    "overwrite_policy": "--overwrite-kit-files may overwrite only kit_owned_paths inside target_dir and github_template_paths when --with-github is used. workspace, private, cache, raw, maps, findings, reports, context packets, implementation packets, and decisions are never overwritten."
+  },
+  "migration_policy": {
+    "summary": "Installer reads schema_version; unknown newer schema = warn and refuse overwrite; older schema = install only missing kit files unless update command exists.",
+    "reader_rule": "Installer reads schema_version before overwrite decisions.",
+    "unknown_newer_schema": "Warn and refuse overwrite.",
+    "older_schema": "Install only missing kit files unless an explicit update command exists."
+  }
+}
