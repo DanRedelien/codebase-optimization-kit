@@ -6,7 +6,7 @@ This `.optimization-kit/` directory is temporary workflow tooling for one audit/
 
 - Root `AGENTS.md` and project docs remain the source of truth.
 - This kit adds workflow structure only.
-- Findings are not source of truth until accepted and validated.
+- Findings are not source of truth until approved, implemented, and validated.
 - The kit never writes to `docs/` by default.
 
 ## Agent Boundaries
@@ -25,6 +25,7 @@ Read only what applies to the current phase:
 2. `workflows/02-risk-and-evidence.md`
 3. `workflows/03-implementation.md`
 4. `workflows/04-validation-rollback-archive.md`
+5. `workflows/05-qa-and-review.md`
 
 Use `scoring/risk-policy.md` as the approval authority and load only relevant language adapters.
 

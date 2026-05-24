@@ -9,7 +9,7 @@
 
 ## Evidence
 
-Summarize concrete evidence. Do not treat this issue as source of truth until the finding is accepted and validated.
+Summarize concrete evidence. Do not treat this issue as source of truth until the finding is approved, implemented, and validated.
 
 ## Proposed Action
 

@@ -26,7 +26,10 @@ REQUIRED_MANIFEST_FIELDS = {
     "installed_at": str,
     "target_dir": str,
     "private_workspace": bool,
+    "github_templates": bool,
     "safe_to_delete_after": str,
+    "ownership": dict,
+    "migration_policy": dict,
 }
 
 REQUIRED_KIT_FILES = (
@@ -51,6 +54,7 @@ PROTECTED_PATHS = (
     "workspace/context-packets/",
     "workspace/implementation-packets/",
     "workspace/decisions/",
+    "workspace/locks/",
     "workspace/private/",
     "workspace/cache/",
     "workspace/raw/",
@@ -68,7 +72,7 @@ GITHUB_TEMPLATE_PATHS = (
     ".github/ISSUE_TEMPLATE/refactor_proposal.md",
 )
 
-ACTIVE_PACKET_STATUSES = {"approved", "active", "implementing", "in-progress"}
+ACTIVE_PACKET_STATUSES = {"approved"}
 
 MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 SCRIPT_RE = re.compile(
@@ -323,11 +327,19 @@ def validate_artifact_protection(state: ValidationState, manifest: dict[str, obj
 
     protected_paths = ownership.get("protected_paths")
     kit_owned_paths = ownership.get("kit_owned_paths")
+    github_template_paths = ownership.get("github_template_paths")
+    overwrite_policy = ownership.get("overwrite_policy")
     if not isinstance(protected_paths, list) or not all(isinstance(item, str) for item in protected_paths):
         state.error(state.rel(manifest_path), "ownership.protected_paths must be a string list")
         return
     if not isinstance(kit_owned_paths, list) or not all(isinstance(item, str) for item in kit_owned_paths):
         state.error(state.rel(manifest_path), "ownership.kit_owned_paths must be a string list")
+        return
+    if not isinstance(github_template_paths, list) or not all(isinstance(item, str) for item in github_template_paths):
+        state.error(state.rel(manifest_path), "ownership.github_template_paths must be a string list")
+        return
+    if not isinstance(overwrite_policy, str) or not overwrite_policy.strip():
+        state.error(state.rel(manifest_path), "ownership.overwrite_policy must be a non-empty string")
         return
 
     missing = [path for path in PROTECTED_PATHS if path not in protected_paths]
@@ -344,6 +356,31 @@ def validate_artifact_protection(state: ValidationState, manifest: dict[str, obj
         )
     else:
         state.ok(state.rel(manifest_path), "kit-owned overwrite list excludes project artifacts")
+
+    missing_github_paths = [path for path in GITHUB_TEMPLATE_PATHS if path not in github_template_paths]
+    if missing_github_paths:
+        state.error(state.rel(manifest_path), "GitHub template paths missing from manifest: " + ", ".join(missing_github_paths))
+    else:
+        state.ok(state.rel(manifest_path), "GitHub template paths are recorded")
+
+    if "locks" not in overwrite_policy:
+        state.error(state.rel(manifest_path), "ownership.overwrite_policy must mention lock protection")
+    else:
+        state.ok(state.rel(manifest_path), "overwrite policy mentions lock protection")
+
+
+def validate_migration_policy(state: ValidationState, manifest: dict[str, object] | None) -> None:
+    manifest_path = state.kit_root / "manifest.json"
+    migration_policy = manifest.get("migration_policy") if manifest else None
+    if not isinstance(migration_policy, dict):
+        state.error(state.rel(manifest_path), "migration_policy metadata is missing")
+        return
+    required = ("summary", "reader_rule", "unknown_newer_schema", "older_schema")
+    missing = [key for key in required if not isinstance(migration_policy.get(key), str) or not migration_policy.get(key)]
+    if missing:
+        state.error(state.rel(manifest_path), "migration_policy fields are missing or empty: " + ", ".join(missing))
+    else:
+        state.ok(state.rel(manifest_path), "migration policy is present")
 
 
 def generated_markdown_files(state: ValidationState) -> list[Path]:
@@ -543,6 +580,7 @@ def main(argv: list[str]) -> int:
     validate_gitignore(state)
     validate_private_workspace(state, manifest, args.private_workspace)
     validate_artifact_protection(state, manifest)
+    validate_migration_policy(state, manifest)
     validate_english_text(state)
     validate_markdown_links(state)
     validate_github_templates(state, manifest, args.expect_github)

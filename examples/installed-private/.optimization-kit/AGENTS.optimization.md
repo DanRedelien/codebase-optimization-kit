@@ -14,13 +14,15 @@ These instructions apply only to work inside `.optimization-kit/`. They do not r
 - Implementation agents may only modify files listed in an approved implementation packet.
 - The kit never writes to `docs/` by default.
 - Do not create permanent project documentation from kit findings without an approved durable-knowledge promotion proposal.
+- Do not edit the same finding, context packet, implementation packet, decision, report, or lock file concurrently with another active agent.
+- Active parallel work may create `.optimization-kit/workspace/locks/<id>.lock` as an advisory v0.1 marker.
 
 ## Findings
 
 - Findings must use stable IDs such as `ARCH-001`, `DEAD-001`, `PERF-001`, `TEST-001`, `DOCS-001`, or `INT-001`.
 - Findings must use one lifecycle status: `candidate`, `needs-evidence`, `approved`, `rejected`, `superseded`, `implemented`, `validated`, or `rolled-back`.
 - Replaced findings must be marked `superseded` and linked to the replacement.
-- Findings are not source of truth until accepted and validated.
+- Findings are not source of truth until approved, implemented, and validated.
 
 ## Implementation
 

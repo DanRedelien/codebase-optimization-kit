@@ -30,5 +30,5 @@ Explain why this is durable project knowledge rather than temporary audit eviden
 
 - The kit never writes to `docs/` by default.
 - Do not update permanent docs without approval.
-- Findings are not source of truth until accepted and validated.
+- Findings are not source of truth until approved, implemented, and validated.
 - Temporary audit notes must be rewritten as durable project knowledge before promotion.

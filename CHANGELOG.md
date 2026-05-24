@@ -24,3 +24,5 @@ All notable changes to `codebase-optimization-kit` will be documented here.
 - Optional GitHub issue and pull request templates for `--with-github`.
 - Public and private installed examples.
 - Adoption, update, open-source, MCP roadmap, and removal/archive docs.
+- Separate QA Agent and Review Agent role guidance.
+- Phase 5 QA/review workflow with advisory v0.1 lock guidance.

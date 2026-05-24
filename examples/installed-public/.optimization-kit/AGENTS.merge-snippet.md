@@ -10,7 +10,7 @@ This repository may contain `.optimization-kit/`, a temporary audit/refactor wor
 - Root `AGENTS.md` and project docs remain the source of truth.
 - Discovery agents may only write inside `.optimization-kit/workspace/`.
 - Implementation agents may only modify files listed in an approved implementation packet.
-- Findings are not source of truth until accepted and validated.
+- Findings are not source of truth until approved, implemented, and validated.
 - Replaced findings must be marked `superseded`.
 - The kit never writes to `docs/` by default.
 ```

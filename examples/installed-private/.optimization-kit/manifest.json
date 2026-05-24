@@ -24,6 +24,8 @@
       "language-adapters/typescript.md",
       "manifest.json",
       "roles/README.md",
+      "roles/qa-agent.md",
+      "roles/review-agent.md",
       "scoring/README.md",
       "scoring/confidence.md",
       "scoring/impact.md",
@@ -43,6 +45,7 @@
       "workflows/02-risk-and-evidence.md",
       "workflows/03-implementation.md",
       "workflows/04-validation-rollback-archive.md",
+      "workflows/05-qa-and-review.md",
       "workflows/README.md"
     ],
     "github_template_paths": [
@@ -58,11 +61,12 @@
       "workspace/context-packets/",
       "workspace/implementation-packets/",
       "workspace/decisions/",
+      "workspace/locks/",
       "workspace/private/",
       "workspace/cache/",
       "workspace/raw/"
     ],
-    "overwrite_policy": "--overwrite-kit-files may overwrite only kit_owned_paths inside target_dir and github_template_paths when --with-github is used. workspace, private, cache, raw, maps, findings, reports, context packets, implementation packets, and decisions are never overwritten."
+    "overwrite_policy": "--overwrite-kit-files may overwrite only kit_owned_paths inside target_dir and github_template_paths when --with-github is used. workspace, private, cache, raw, maps, findings, reports, context packets, implementation packets, decisions, and locks are never overwritten."
   },
   "migration_policy": {
     "summary": "Installer reads schema_version; unknown newer schema = warn and refuse overwrite; older schema = install only missing kit files unless update command exists.",

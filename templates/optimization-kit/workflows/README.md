@@ -17,7 +17,8 @@ Read only the workflow needed for the current phase, then load the linked scorin
 
 - Discovery agents may only write inside `.optimization-kit/workspace/`.
 - Implementation agents may only modify files listed in an approved implementation packet.
-- Findings are not source of truth until accepted and validated.
+- Findings are not source of truth until approved, implemented, and validated.
 - Risk 4 implementation requires explicit human approval recorded in an implementation packet or decision file.
 - Risk 5 work requires an RFC/ADR path and no direct implementation.
+- Agents must not edit the same finding, context packet, implementation packet, decision, report, or lock file concurrently.
 - The kit never writes to `docs/` by default.

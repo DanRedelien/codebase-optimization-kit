@@ -76,4 +76,4 @@ List checks needed before this finding can become `validated`.
 
 ## Source Of Truth Note
 
-This finding is temporary kit evidence. It is not project source of truth until accepted, implemented, and validated.
+This finding is temporary kit evidence. It is not project source of truth until approved, implemented, and validated.

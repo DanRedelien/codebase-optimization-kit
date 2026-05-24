@@ -33,7 +33,10 @@ TEMPLATE_FILES = (
     "workflows/02-risk-and-evidence.md",
     "workflows/03-implementation.md",
     "workflows/04-validation-rollback-archive.md",
+    "workflows/05-qa-and-review.md",
     "roles/README.md",
+    "roles/qa-agent.md",
+    "roles/review-agent.md",
     "templates/README.md",
     "templates/context-packet.template.md",
     "templates/decision-record.template.md",
@@ -68,6 +71,7 @@ PROTECTED_PATHS = (
     "workspace/context-packets/",
     "workspace/implementation-packets/",
     "workspace/decisions/",
+    "workspace/locks/",
     "workspace/private/",
     "workspace/cache/",
     "workspace/raw/",
@@ -106,6 +110,7 @@ class InstallerConfig:
 @dataclass
 class InstallState:
     overwrite_enabled: bool
+    github_template_overwrite_enabled: bool = False
     warning_count: int = 0
     write_count: int = 0
     planned_dirs: set[Path] = field(default_factory=set)
@@ -247,6 +252,13 @@ def symlink_blocker(path: Path, project_root: Path) -> Path | None:
 
 
 def path_is_safe_for_write(path: Path, config: InstallerConfig, state: InstallState) -> bool:
+    if is_link_path(path):
+        state.warning_count += 1
+        warn(
+            format_path(path, config.project_root),
+            "skipped because the destination path is a symlink or junction",
+        )
+        return False
     blocker = symlink_blocker(path, config.project_root)
     if blocker is not None:
         state.warning_count += 1
@@ -369,7 +381,7 @@ def generated_manifest(config: InstallerConfig) -> str:
                 "--overwrite-kit-files may overwrite only kit_owned_paths inside target_dir "
                 "and github_template_paths when --with-github is used. "
                 "workspace, private, cache, raw, maps, findings, reports, context packets, "
-                "implementation packets, and decisions are never overwritten."
+                "implementation packets, decisions, and locks are never overwritten."
             ),
         },
         "migration_policy": {
@@ -444,6 +456,7 @@ def determine_overwrite(config: InstallerConfig, state: InstallState) -> None:
         return
 
     state.overwrite_enabled = True
+    state.github_template_overwrite_enabled = manifest.get("github_templates") is True
 
 
 def can_overwrite_kit_path(relative_path: str, state: InstallState) -> bool:
@@ -622,12 +635,18 @@ def handle_github_templates(config: InstallerConfig, state: InstallState) -> Non
             continue
         content = render_template_text(source.read_text(encoding="utf-8"), config)
         destination = config.project_root / Path(destination_path)
+        destination_matches_template = False
+        if destination.exists() and not destination.is_dir() and not is_link_path(destination):
+            try:
+                destination_matches_template = destination.read_text(encoding="utf-8") == content
+            except OSError:
+                destination_matches_template = False
         write_file(
             destination,
             content,
             config,
             state,
-            allow_overwrite=state.overwrite_enabled,
+            allow_overwrite=state.github_template_overwrite_enabled or destination_matches_template,
             overwrite_reason="known kit-owned GitHub template",
         )
 

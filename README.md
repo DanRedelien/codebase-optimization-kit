@@ -13,7 +13,7 @@ The kit does not replace the project's `docs/`, `AGENTS.md`, `README.md`, archit
 
 ## Current v0.1 Scope
 
-This repository currently contains the product skeleton, English-only artifact templates, grouped Phase 2 workflows, scoring policy, language adapters, the safe installer, the validator, examples, and adoption docs for v0.1:
+This repository currently contains the product skeleton, English-only artifact templates, grouped workflows, scoring policy, language adapters, the safe installer, the validator, examples, and adoption docs for v0.1:
 
 ```text
 scripts/
@@ -44,6 +44,7 @@ templates/
       02-risk-and-evidence.md
       03-implementation.md
       04-validation-rollback-archive.md
+      05-qa-and-review.md
     scoring/
       impact.md
       confidence.md
@@ -59,6 +60,8 @@ templates/
       cpp.md
     templates/
     roles/
+      qa-agent.md
+      review-agent.md
     workspace/
 ```
 
@@ -117,10 +120,14 @@ The validator checks only relative Markdown links that resolve to files inside t
 - Root `AGENTS.md` and project docs remain the source of truth.
 - Discovery agents may only write inside `.optimization-kit/workspace/`.
 - Implementation agents may only modify files listed in an approved implementation packet.
-- Findings are not source of truth until accepted and validated.
+- Findings are not source of truth until approved, implemented, and validated.
 - Replaced findings must be marked `superseded`, not left as orphan records.
 - Risk 4 implementation requires explicit human approval recorded in an implementation packet or decision file.
 - Risk 5 work requires an RFC/ADR path and no direct implementation from the kit.
+- v0.1 is feature-locked; Phase 5 changes are limited to safety, wording, validation, QA, and release-blocking corrections.
+- QA Agent and Review Agent responsibilities are separated in `roles/` and `workflows/05-qa-and-review.md`.
+- Agents must not edit the same finding, context packet, implementation packet, decision, report, or lock file concurrently.
+- Active parallel work may create advisory `.optimization-kit/workspace/locks/<id>.lock` markers; full lock automation is deferred to v0.2.
 - The kit never writes to `docs/` by default.
 
 ## Finding IDs

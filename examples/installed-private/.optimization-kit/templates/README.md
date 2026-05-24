@@ -14,7 +14,7 @@ Rules:
 
 | File | Use |
 | --- | --- |
-| `finding.template.md` | Record candidate and accepted findings. |
+| `finding.template.md` | Record candidate and approved findings. |
 | `context-packet.template.md` | Package only the context needed for one decision or implementation. |
 | `implementation-packet.template.md` | Authorize scoped implementation work. |
 | `rollback-plan.template.md` | Define rollback scope, trigger, and validation. |
