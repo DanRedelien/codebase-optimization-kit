@@ -90,7 +90,7 @@ The lock file is advisory in v0.1. It should include owner, scope, started time,
 
 ## Completion Criteria
 
-Phase 5 review is complete enough when:
+The QA and review pass is complete enough when:
 
 - QA notes cover commands, idempotency, filesystem behavior, and partial install recovery.
 - Review notes cover safety policy, wording, agent ambiguity, and overwrite risk.

@@ -7,9 +7,9 @@
 - Intended lifetime: single optimization pass
 - Private workspace: no
 
-## Current Phase
+## Current Workflow Step
 
-- Phase:
+- Workflow step:
 - Owner:
 - Last updated:
 

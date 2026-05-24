@@ -13,7 +13,7 @@ The kit does not replace the project's `docs/`, `AGENTS.md`, `README.md`, archit
 
 ## Current v0.1 Scope
 
-This repository currently contains the product skeleton, English-only artifact templates, grouped workflows, scoring policy, language adapters, the safe installer, the validator, examples, and adoption docs for v0.1:
+This repository currently contains the product skeleton, English-only artifact templates, grouped workflows, scoring policy, language adapters, the safe installer, the validator, and adoption docs for v0.1:
 
 ```text
 scripts/
@@ -26,10 +26,6 @@ docs/
   open-source-guide.md
   mcp-roadmap.md
   removal-and-archive.md
-
-examples/
-  installed-public/
-  installed-private/
 
 templates/
   optimization-kit/
@@ -65,7 +61,12 @@ templates/
     workspace/
 ```
 
-The workflow files are grouped by phase to reduce context noise. Detailed rules live in `templates/`, `scoring/`, and `language-adapters/`.
+The workflow files are grouped by operating area to reduce context noise. Detailed rules live in `templates/`, `scoring/`, and `language-adapters/`.
+
+## Requirements
+
+- Python 3.10 or newer on the host machine running the installer and validator.
+- An existing project directory where the temporary workspace should be installed.
 
 ## Install
 
@@ -114,6 +115,15 @@ Optional validation modes:
 
 The validator checks only relative Markdown links that resolve to files inside the installed kit. External links and anchor-only links are ignored in v0.1.
 
+## Typical Workflow
+
+1. Install `.optimization-kit/` into the target project.
+2. Ask the agent to read the project's root instructions, then `.optimization-kit/START_HERE.md`.
+3. Run discovery and write temporary maps, findings, and packets under `.optimization-kit/workspace/`.
+4. Approve one implementation packet before any source changes.
+5. Implement only the packet scope, validate, and record results.
+6. Export the final summary, promote only approved durable knowledge, then delete or archive `.optimization-kit/`.
+
 ## Core Rules
 
 - `.optimization-kit/` is temporary workflow tooling.
@@ -124,7 +134,6 @@ The validator checks only relative Markdown links that resolve to files inside t
 - Replaced findings must be marked `superseded`, not left as orphan records.
 - Risk 4 implementation requires explicit human approval recorded in an implementation packet or decision file.
 - Risk 5 work requires an RFC/ADR path and no direct implementation from the kit.
-- v0.1 is feature-locked; Phase 5 changes are limited to safety, wording, validation, QA, and release-blocking corrections.
 - QA Agent and Review Agent responsibilities are separated in `roles/` and `workflows/05-qa-and-review.md`.
 - Agents must not edit the same finding, context packet, implementation packet, decision, report, or lock file concurrently.
 - Active parallel work may create advisory `.optimization-kit/workspace/locks/<id>.lock` markers; full lock automation is deferred to v0.2.

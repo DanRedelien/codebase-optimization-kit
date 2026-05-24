@@ -4,7 +4,7 @@ These workflows make `.optimization-kit/` operational for one audit/refactor pas
 
 ## Read Order
 
-Read only the workflow needed for the current phase, then load the linked scoring or language-adapter files as needed.
+Read only the workflow needed for the current workflow step, then load the linked scoring or language-adapter files as needed.
 
 | File | Covers |
 | --- | --- |

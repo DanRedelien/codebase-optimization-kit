@@ -19,7 +19,7 @@ This `.optimization-kit/` directory is temporary workflow tooling for one audit/
 
 ## Workflow Read Order
 
-Read only what applies to the current phase:
+Read only what applies to the current workflow step:
 
 1. `workflows/01-discovery.md`
 2. `workflows/02-risk-and-evidence.md`
@@ -63,5 +63,5 @@ INT-001
 
 1. Read root `AGENTS.md`, `README.md`, and relevant project docs.
 2. Record project-specific notes in `.optimization-kit/workspace/`.
-3. Use the workflow file for the current phase.
+3. Use the workflow file for the current workflow step.
 4. Do not edit project source files until an implementation packet is approved.
