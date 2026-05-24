@@ -1,8 +1,8 @@
-# Behavioral Parity Policy Template
+# Project Behavioral Parity Policy
 
-Use this file to define project-specific equivalence rules before implementation packets are approved.
+Fill this file with project-specific equivalence rules before implementation packets are approved.
 
-## Public Contracts
+Examples:
 
 - APIs: `<snapshot, schema, route, or client contract checks>`
 - CLI: `<command output comparison>`

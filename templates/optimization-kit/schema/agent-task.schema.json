@@ -33,23 +33,35 @@
         "todo-assumption-auditor"
       ]
     },
+    "role_queue": {
+      "type": "array"
+    },
     "status": {
       "type": "string"
     },
-    "supporting_reads": {
+    "required_reads": {
+      "type": "array"
+    },
+    "optional_reads": {
       "type": "array"
     },
     "zone": {
       "type": "string"
+    },
+    "zones": {
+      "type": "array"
     }
   },
   "required": [
     "id",
     "role",
     "zone",
+    "zones",
     "objective",
     "allowed_reads",
-    "supporting_reads",
+    "required_reads",
+    "optional_reads",
+    "role_queue",
     "allowed_writes",
     "required_outputs",
     "forbidden_actions",

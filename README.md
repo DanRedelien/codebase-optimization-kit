@@ -23,15 +23,12 @@ It is not a permanent project dependency, documentation system, MCP server, auto
 ```text
 templates/optimization-kit/
   AGENT.md
-  README.md
   SAFE_TO_DELETE.md
   kit.py
   schema/
   state/
-  adapters/
   policies/
   templates/
-  reports/
 ```
 
 When installed, this becomes:
@@ -75,7 +72,6 @@ Useful flags:
 | `--dry-run` | Print planned actions without writing files. |
 | `--target-dir .codebase-optimization-kit` | Use a custom relative target directory. |
 | `--overwrite-kit-files` | Refresh kit-owned runtime files only. State, findings, packets, reports, locks, and decisions are preserved. |
-| `--with-github` | Copy optional GitHub issue/PR templates if missing. |
 
 Installer safety rules:
 
@@ -101,9 +97,7 @@ python .codebase-optimization-kit/kit.py packets validate
 python .codebase-optimization-kit/kit.py validate
 python .codebase-optimization-kit/kit.py validate --enforce-packet
 python .codebase-optimization-kit/kit.py report
-python .codebase-optimization-kit/kit.py tools detect
-python .codebase-optimization-kit/kit.py contracts scan
-python .codebase-optimization-kit/kit.py tests detect
+python .codebase-optimization-kit/kit.py contracts candidates
 python .codebase-optimization-kit/kit.py locks acquire --scope Z-core
 python .codebase-optimization-kit/kit.py locks release --scope Z-core
 python .codebase-optimization-kit/kit.py status

@@ -2,10 +2,22 @@
   "allowed_reads": [
     "src/core/**"
   ],
-  "supporting_reads": [
+  "required_reads": [
     "AGENTS.md",
     "README.md",
     "tests/core/**"
+  ],
+  "optional_reads": [
+    "docs/architecture.md"
+  ],
+  "role_queue": [
+    {
+      "roles": [
+        "architecture-auditor",
+        "dead-code-auditor"
+      ],
+      "zone": "Z-core"
+    }
   ],
   "allowed_writes": [
     ".codebase-optimization-kit/state/findings.jsonl"
@@ -23,5 +35,8 @@
   ],
   "role": "architecture-auditor",
   "status": "open",
-  "zone": "Z-core"
+  "zone": "Z-core",
+  "zones": [
+    "Z-core"
+  ]
 }

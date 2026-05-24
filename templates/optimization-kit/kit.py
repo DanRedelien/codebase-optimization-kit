@@ -297,7 +297,7 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
 
 
 def ensure_runtime() -> None:
-    for directory in [STATE, REPORTS, SCHEMA, HERE / "adapters", HERE / "policies", HERE / "templates"]:
+    for directory in [STATE, REPORTS, SCHEMA, HERE / "policies", HERE / "templates"]:
         directory.mkdir(parents=True, exist_ok=True)
     for filename, default in JSON_DEFAULTS.items():
         path = state(filename)
@@ -340,8 +340,6 @@ def load_metrics_policy() -> dict[str, Any]:
 def metric_value_errors(name: str, value: Any, policy: dict[str, Any], label: str) -> list[str]:
     if value is None:
         return []
-    if name == "risk_score" and isinstance(value, int) and not isinstance(value, bool):
-        return [] if 1 <= value <= 5 else [f"{label} risk_score must be between 1 and 5"]
     if not isinstance(value, dict):
         return [f"{label} metric {name} must be an evidence object when claimed"]
     required = policy.get(name, {}).get("required_evidence", [])
@@ -526,6 +524,24 @@ def validate_policy_drift() -> list[str]:
     metrics_policy = load_json(POLICIES / "metrics-policy.json", {})
     if isinstance(metrics_policy, dict) and set(metrics_policy.keys()) != set(METRICS):
         errors.append("policies/metrics-policy.json keys drift from kit.py metrics")
+    finding_schema, schema_errors = load_schema("finding.schema.json")
+    errors.extend(schema_errors)
+    if finding_schema:
+        status_enum = finding_schema.get("properties", {}).get("status", {}).get("enum", [])
+        if set(status_enum) != FINDING_STATUSES:
+            errors.append("schema/finding.schema.json status enum drifts from kit.py")
+    packet_schema, schema_errors = load_schema("packet.schema.json")
+    errors.extend(schema_errors)
+    if packet_schema:
+        status_enum = packet_schema.get("properties", {}).get("status", {}).get("enum", [])
+        if set(status_enum) != PACKET_STATUSES:
+            errors.append("schema/packet.schema.json status enum drifts from kit.py")
+    task_schema, schema_errors = load_schema("agent-task.schema.json")
+    errors.extend(schema_errors)
+    if task_schema:
+        role_enum = task_schema.get("properties", {}).get("role", {}).get("enum", [])
+        if set(role_enum) != set(ROLES):
+            errors.append("schema/agent-task.schema.json role enum drifts from kit.py")
     return errors
 
 
@@ -596,7 +612,7 @@ def doctor(_: argparse.Namespace) -> int:
         errors.append(f"Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+ is required")
     if HERE.name != KIT_DIR_NAME:
         warnings.append(f"kit directory is {HERE.name}; expected {KIT_DIR_NAME}")
-    for directory in [STATE, REPORTS, SCHEMA, HERE / "adapters", HERE / "policies", HERE / "templates"]:
+    for directory in [STATE, REPORTS, SCHEMA, HERE / "policies", HERE / "templates"]:
         if not directory.is_dir():
             errors.append(f"missing runtime directory: {rel(directory)}")
     errors.extend(validate_schemas())
@@ -730,6 +746,7 @@ def census(_: argparse.Namespace) -> int:
     configs = [path for path in paths if PurePosixPath(path).name in CONFIG_NAMES or path.startswith(".github/")]
     entrypoints = [path for path in paths if PurePosixPath(path).name.lower() in {"main.py", "app.py", "index.js", "index.ts", "main.go", "main.rs", "server.js", "server.ts"}]
     tools = tool_info(paths)
+    contract_candidates = contract_candidates_from_records(records)
     largest = sorted(records, key=lambda item: (int(item["loc"]), int(item["bytes"])), reverse=True)[:25]
     doc = {
         "kit_version": KIT_VERSION,
@@ -745,9 +762,11 @@ def census(_: argparse.Namespace) -> int:
         "test_files": tests,
         "config_files": configs,
         "entrypoint_candidates": entrypoints,
+        "contract_candidates": contract_candidates,
         "detected_tools": tools,
     }
     save_json(state("census.json"), doc)
+    save_json(state("contracts.json"), {"contracts": contract_candidates})
     save_json(state("tests.json"), {"test_files": tests, "commands": tools["commands"]})
     save_json(state("metrics.json"), {"metrics": {"census": doc["summary"], "language_mix": doc["language_mix"]}})
     print(f"OK    wrote {len(records)} file records")
@@ -843,31 +862,48 @@ def contract_candidates_from_records(records: list[dict[str, Any]]) -> list[dict
     return sorted(candidates, key=lambda item: (item["kind"], item["path"]))
 
 
-def supporting_reads_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
-    zone_id = zone.get("id")
-    support: list[str] = []
-    for authority in ["AGENTS.md", "README.md"]:
+def dedupe_limited(items: list[str], limit: int) -> list[str]:
+    clean: list[str] = []
+    for item in items:
+        normalized = norm(item)
+        if normalized not in clean:
+            clean.append(normalized)
+        if len(clean) >= limit:
+            break
+    return clean
+
+
+def authority_doc_candidates(records: list[dict[str, Any]]) -> list[str]:
+    candidates: list[str] = []
+    for authority in ["AGENTS.md", "README.md", "CONTRIBUTING.md"]:
         if (PROJECT_ROOT / authority).exists():
-            support.append(authority)
-    if (PROJECT_ROOT / "docs").is_dir():
-        support.append("docs/**")
+            candidates.append(authority)
+    for record in records:
+        path = str(record.get("path", ""))
+        name = PurePosixPath(path).name.lower()
+        if not path.startswith("docs/"):
+            continue
+        if name in {"readme.md", "architecture.md", "api.md", "contracts.md", "testing.md"} or any(token in name for token in ["architecture", "contract", "api", "testing", "integration"]):
+            candidates.append(path)
+    return dedupe_limited(candidates, 10)
+
+
+def context_reads_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    zone_id = zone.get("id")
+    required: list[str] = authority_doc_candidates(records)[:4]
+    optional: list[str] = authority_doc_candidates(records)[4:]
     census_doc = load_json(state("census.json"), {})
     if isinstance(census_doc, dict):
-        support.extend(census_doc.get("package_manifests", []) or [])
-        support.extend(census_doc.get("config_files", []) or [])
-    support.extend(zone.get("tests") or [])
-    support.extend(record["path"] for record in records if record.get("zone") == zone_id and "test" in (record.get("signals") or []))
+        required.extend((census_doc.get("package_manifests", []) or [])[:8])
+        optional.extend((census_doc.get("config_files", []) or [])[:12])
+    required.extend((zone.get("tests") or [])[:12])
+    required.extend(record["path"] for record in records if record.get("zone") == zone_id and "test" in (record.get("signals") or []))
     contracts = load_json(state("contracts.json"), {"contracts": []})
     contract_records = contracts.get("contracts", []) if isinstance(contracts, dict) else []
     if not contract_records:
         contract_records = contract_candidates_from_records(records)
-    support.extend(str(item.get("path")) for item in contract_records if item.get("path"))
-    clean: list[str] = []
-    for item in support:
-        normalized = norm(item)
-        if normalized not in clean:
-            clean.append(normalized)
-    return clean[:80]
+    optional.extend(str(item.get("path")) for item in contract_records if item.get("path"))
+    return dedupe_limited(required, 24), dedupe_limited(optional, 32)
 
 
 def roles_for(zone: dict[str, Any]) -> list[str]:
@@ -890,6 +926,35 @@ def roles_for(zone: dict[str, Any]) -> list[str]:
     return unique
 
 
+def recommended_agent_total(zones: list[dict[str, Any]]) -> int:
+    total_loc = sum(int(zone.get("loc") or 0) for zone in zones)
+    total_files = sum(int(zone.get("files") or 0) for zone in zones)
+    high_risk = sum(1 for zone in zones if zone.get("risk_notes"))
+    if total_loc >= 150000 or total_files >= 1200:
+        base = 8
+    elif total_loc >= 75000 or total_files >= 600:
+        base = 6
+    elif total_loc >= 35000 or total_files >= 300:
+        base = 4
+    elif total_loc >= 12000 or total_files >= 120:
+        base = 3
+    elif len(zones) >= 12 or total_files >= 40:
+        base = 2
+    else:
+        base = 1
+    return min(12, max(1, base + min(high_risk, 2)))
+
+
+def assign_zones_to_slots(zones: list[dict[str, Any]], slots: int) -> list[list[dict[str, Any]]]:
+    assignments: list[list[dict[str, Any]]] = [[] for _ in range(slots)]
+    weights = [0 for _ in range(slots)]
+    for zone in sorted(zones, key=lambda item: (int(item.get("loc") or 0), int(item.get("files") or 0)), reverse=True):
+        slot = min(range(slots), key=lambda index: weights[index])
+        assignments[slot].append(zone)
+        weights[slot] += int(zone.get("loc") or 0) + int(zone.get("files") or 0) * 25
+    return assignments
+
+
 def agents_plan(_: argparse.Namespace) -> int:
     ensure_runtime()
     zones = load_json(state("zones.json"), {"zones": []}).get("zones", [])
@@ -897,18 +962,24 @@ def agents_plan(_: argparse.Namespace) -> int:
         zones_suggest(argparse.Namespace())
         zones = load_json(state("zones.json"), {"zones": []}).get("zones", [])
     records, _ = read_jsonl(state("file-tree.jsonl"))
+    slots = recommended_agent_total(zones)
     tasks = []
-    number = 1
-    for zone in zones:
-        zone_roles = roles_for(zone)
-        recommended = max(1, int(zone.get("recommended_agents") or 1))
-        support = supporting_reads_for_zone(zone, records)
-        for index, role in enumerate(zone_roles):
-            tasks.append({"id": f"TASK-{number:03d}", "role": role, "zone": zone["id"], "objective": "Find optimization opportunities with evidence only; do not edit source files.", "allowed_reads": list(zone.get("globs") or []), "supporting_reads": support, "allowed_writes": [f"{HERE.name}/state/findings.jsonl"], "required_outputs": ["findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code"], "recommended_agent_slot": (index % recommended) + 1, "max_context_files": min(int(zone.get("files") or 0) + len(support), 240), "max_context_tokens": 120000, "status": "open"})
-            number += 1
+    for index, assigned_zones in enumerate(assign_zones_to_slots(zones, slots), start=1):
+        required_reads: list[str] = []
+        optional_reads: list[str] = []
+        allowed_reads: list[str] = []
+        role_queue: list[dict[str, Any]] = []
+        for zone in assigned_zones:
+            zone_required, zone_optional = context_reads_for_zone(zone, records)
+            required_reads.extend(zone_required)
+            optional_reads.extend(zone_optional)
+            allowed_reads.extend(zone.get("globs") or [])
+            role_queue.append({"zone": zone["id"], "roles": roles_for(zone)})
+        primary_role = role_queue[0]["roles"][0] if role_queue else "architecture-auditor"
+        tasks.append({"id": f"TASK-{index:03d}", "role": primary_role, "zone": ",".join(zone["id"] for zone in assigned_zones), "zones": [zone["id"] for zone in assigned_zones], "objective": "Work the role_queue for assigned zones with evidence only; do not edit source files.", "allowed_reads": dedupe_limited(allowed_reads, 80), "required_reads": dedupe_limited(required_reads, 40), "optional_reads": dedupe_limited(optional_reads, 60), "role_queue": role_queue, "allowed_writes": [f"{HERE.name}/state/findings.jsonl"], "required_outputs": ["findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code"], "recommended_agent_slot": index, "max_context_files": min(sum(int(zone.get("files") or 0) for zone in assigned_zones) + 40, 240), "max_context_tokens": 120000, "status": "open"})
     write_jsonl(state("agent-tasks.jsonl"), tasks)
     write_reports()
-    print(f"OK    wrote {len(tasks)} agent tasks")
+    print(f"OK    wrote {len(tasks)} agent-slot tasks")
     return 0
 
 
@@ -1056,6 +1127,8 @@ def packets_create(args: argparse.Namespace) -> int:
         print(f"ERROR finding not found: {args.finding}")
         return 1
     metrics = finding.get("metrics") if isinstance(finding.get("metrics"), dict) else {}
+    risk_metric = metrics.get("risk_score")
+    risk_score = risk_metric.get("risk_level") if isinstance(risk_metric, dict) else risk_metric
     packet = {
         "id": next_id(state("packets.jsonl"), "PKT"),
         "status": "draft",
@@ -1070,7 +1143,7 @@ def packets_create(args: argparse.Namespace) -> int:
         "behavioral_parity_requirements": {"inputs_compatible": [], "outputs_compatible": [], "error_behavior_compatible": [], "performance_expectations": [], "known_acceptable_differences": []},
         "validation_commands": [],
         "rollback_plan": [],
-        "risk_score": metrics.get("risk_score"),
+        "risk_score": risk_score,
         "human_approval": None,
         "durable_knowledge_decisions": [],
         "created_at": now(),
@@ -1262,15 +1335,18 @@ def write_reports() -> None:
     packets, _ = read_jsonl(state("packets.jsonl"))
     tests = load_json(state("tests.json"), {"commands": []})
     summary = census_doc.get("summary", {}) if isinstance(census_doc, dict) else {}
-    (REPORTS / "status.md").write_text("\n".join(["# Status", "", f"Files indexed: {summary.get('total_files', 0)}", f"LOC indexed: {summary.get('total_loc', 0)}", f"Zones: {len(zones)}", f"Agent tasks: {len(tasks)}", f"Findings: {len(findings)}", f"Packets: {len(packets)}", "", "This report is generated from JSON state. Do not edit it as source of truth."]) + "\n", encoding="utf-8", newline="\n")
-    recommended_agents = sum(max(1, int(zone.get("recommended_agents") or 1)) for zone in zones)
-    lines = ["# Agent Plan", "", f"Recommended discovery agents: {recommended_agents}", f"Role-specific discovery tasks: {len(tasks)}", ""]
+    lines = ["# Agent Plan", "", f"Recommended discovery agents: {len(tasks)}", ""]
     for index, task in enumerate(tasks, 1):
-        support = task.get("supporting_reads", [])
+        required = task.get("required_reads", [])
+        optional = task.get("optional_reads", [])
+        role_queue = task.get("role_queue", [])
+        queue_summary = "; ".join(f"{item.get('zone')}: {', '.join(item.get('roles', []))}" for item in role_queue[:6])
         lines += [
-            f"Task {index}: {task.get('role')} on {task.get('zone')} (agent slot {task.get('recommended_agent_slot')})",
+            f"Agent {index}: {task.get('role')} across {len(task.get('zones', []))} zone(s)",
             f"- Files/globs: {', '.join('`' + item + '`' for item in task.get('allowed_reads', []))}",
-            f"- Supporting reads: {', '.join('`' + item + '`' for item in support[:12]) if support else 'None'}",
+            f"- Required reads: {', '.join('`' + item + '`' for item in required[:12]) if required else 'None'}",
+            f"- Optional reads: {', '.join('`' + item + '`' for item in optional[:12]) if optional else 'None'}",
+            f"- Role queue: {queue_summary or 'None'}",
             f"- Expected output: {', '.join(task.get('required_outputs', []))}",
             "",
         ]
@@ -1282,9 +1358,16 @@ def write_reports() -> None:
     lines += [f"- `{item.get('command')}`" for item in commands] if commands else ["None detected."]
     lines += ["", "## Suggested next step", "Ask the human/orchestrator how many discovery agents to spawn and which zones to assign."]
     (REPORTS / "agent-plan.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    ranked = sorted(findings, key=lambda item: (item.get("metrics", {}) or {}).get("risk_score") or 0, reverse=True)
+    def finding_risk(item: dict[str, Any]) -> int:
+        risk = (item.get("metrics", {}) or {}).get("risk_score")
+        if isinstance(risk, dict):
+            raw = risk.get("risk_level")
+            return raw if isinstance(raw, int) else 0
+        return risk if isinstance(risk, int) else 0
+
+    ranked = sorted(findings, key=finding_risk, reverse=True)
     lines = ["# Findings Ranked", ""]
-    lines += [f"- `{item.get('id')}` [{item.get('status')}] risk={(item.get('metrics', {}) or {}).get('risk_score')}: {item.get('title')}" for item in ranked] or ["No findings recorded."]
+    lines += [f"- `{item.get('id')}` [{item.get('status')}] risk={finding_risk(item)}: {item.get('title')}" for item in ranked] or ["No findings recorded."]
     (REPORTS / "findings-ranked.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     backlog = [packet for packet in packets if packet.get("status") in {"draft", "needs-approval", "approved"}]
     lines = ["# Implementation Backlog", ""]
@@ -1303,33 +1386,7 @@ def report(_: argparse.Namespace) -> int:
     return 0
 
 
-def tools_detect(_: argparse.Namespace) -> int:
-    ensure_runtime()
-    records, _ = read_jsonl(state("file-tree.jsonl"))
-    if not records:
-        records, _ = collect_files()
-    info = tool_info([record["path"] for record in records])
-    census_doc = load_json(state("census.json"), {})
-    if isinstance(census_doc, dict):
-        census_doc["detected_tools"] = info
-        save_json(state("census.json"), census_doc)
-    print(json.dumps(info, indent=2, ensure_ascii=True, sort_keys=True))
-    return 0
-
-
-def tests_detect(_: argparse.Namespace) -> int:
-    ensure_runtime()
-    records, _ = read_jsonl(state("file-tree.jsonl"))
-    if not records:
-        records, _ = collect_files()
-    info = tool_info([record["path"] for record in records])
-    test_files = [record["path"] for record in records if record.get("is_test")]
-    save_json(state("tests.json"), {"test_files": test_files, "commands": info["commands"]})
-    print(f"OK    detected {len(test_files)} test files and {len(info['commands'])} candidate commands")
-    return 0
-
-
-def contracts_scan(_: argparse.Namespace) -> int:
+def contracts_candidates(_: argparse.Namespace) -> int:
     ensure_runtime()
     records, _ = read_jsonl(state("file-tree.jsonl"))
     if not records:
@@ -1400,12 +1457,8 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--enforce-packet", action="store_true")
     validate_parser.set_defaults(func=validate)
     sub.add_parser("report").set_defaults(func=report)
-    tools = sub.add_parser("tools").add_subparsers(dest="tools_command", required=True)
-    tools.add_parser("detect").set_defaults(func=tools_detect)
     contracts = sub.add_parser("contracts").add_subparsers(dest="contracts_command", required=True)
-    contracts.add_parser("scan").set_defaults(func=contracts_scan)
-    tests = sub.add_parser("tests").add_subparsers(dest="tests_command", required=True)
-    tests.add_parser("detect").set_defaults(func=tests_detect)
+    contracts.add_parser("candidates").set_defaults(func=contracts_candidates)
     locks = sub.add_parser("locks").add_subparsers(dest="locks_command", required=True)
     acquire = locks.add_parser("acquire")
     acquire.add_argument("--scope", required=True)

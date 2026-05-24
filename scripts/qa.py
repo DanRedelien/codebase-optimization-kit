@@ -72,6 +72,16 @@ def copy_kit(project: Path) -> Path:
     return kit
 
 
+def assert_clean_runtime_template() -> None:
+    forbidden_names = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", "dist", "build"}
+    for path in TEMPLATE.rglob("*"):
+        if path.name in forbidden_names or path.suffix in {".pyc", ".pyo"}:
+            raise QAError(f"runtime template contains cache/build artifact: {path}")
+    state_files = sorted(path.name for path in (TEMPLATE / "state").glob("*"))
+    if state_files != ["project.json"]:
+        raise QAError(f"runtime template should ship only state/project.json, found: {state_files}")
+
+
 def kit_cmd(kit: Path, *args: str, expect: int = 0) -> subprocess.CompletedProcess[str]:
     return run([PYTHON, str(kit / "kit.py"), *args], kit.parent, expect=expect)
 
@@ -125,7 +135,11 @@ def finding(**extra: object) -> dict[str, object]:
             "duplicate_logic_reduction": None,
             "dead_code_confidence": None,
             "complexity_reduction": None,
-            "risk_score": 2,
+            "risk_score": {
+                "risk_level": 2,
+                "risk_reason": "Local sample change.",
+                "approval_path": "Packet approval for implementation.",
+            },
             "reversibility": None,
         },
         "recommendation": "needs-evidence",
@@ -137,6 +151,7 @@ def finding(**extra: object) -> dict[str, object]:
 
 
 def qa_runtime() -> None:
+    assert_clean_runtime_template()
     with tempfile.TemporaryDirectory() as raw:
         temp = Path(raw)
         project = create_project(temp)
@@ -149,10 +164,12 @@ def qa_runtime() -> None:
             "state/project.json",
             "policies/metrics-policy.json",
             "templates/packet.json",
-            "reports/README.md",
         ]:
             if not (kit / relative).exists():
                 raise QAError(f"missing installed runtime path: {relative}")
+        for removed in ["README.md", "reports/README.md", "adapters"]:
+            if (kit / removed).exists():
+                raise QAError(f"runtime should not ship {removed}")
         if (kit / "state" / "findings.jsonl").exists():
             raise QAError("template should not ship empty findings.jsonl")
 
@@ -163,22 +180,24 @@ def qa_runtime() -> None:
         kit_cmd(kit, "zones", "suggest")
         kit_cmd(kit, "agents", "plan")
         tasks = [(json.loads(line)) for line in (kit / "state" / "agent-tasks.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-        roles = {task["role"] for task in tasks}
+        if len(tasks) > 3:
+            raise QAError(f"agents plan created too many tasks for a tiny project: {len(tasks)}")
+        roles = {role for task in tasks for item in task.get("role_queue", []) for role in item.get("roles", [])}
         for role in {"architecture-auditor", "dead-code-auditor", "test-coverage-auditor", "duplicate-logic-auditor", "integration-auditor"}:
             if role not in roles:
                 raise QAError(f"agents plan did not include role: {role}")
-        if not any("README.md" in task.get("supporting_reads", []) for task in tasks):
+        if not any("README.md" in task.get("required_reads", []) for task in tasks):
             raise QAError("agent tasks missing authority supporting reads")
-        if not any("package.json" in task.get("supporting_reads", []) for task in tasks):
+        if not any("package.json" in task.get("required_reads", []) for task in tasks):
             raise QAError("agent tasks missing manifest supporting reads")
-        kit_cmd(kit, "tools", "detect")
-        kit_cmd(kit, "contracts", "scan")
+        if any("docs/**" in task.get("required_reads", []) or "docs/**" in task.get("optional_reads", []) for task in tasks):
+            raise QAError("agent tasks should not include broad docs/** context")
+        kit_cmd(kit, "contracts", "candidates")
         contracts = json.loads((kit / "state" / "contracts.json").read_text(encoding="utf-8"))["contracts"]
         contract_kinds = {item["kind"] for item in contracts}
         for kind in {"package-or-build-contract-candidate", "config-contract-candidate", "route-or-handler-candidate"}:
             if kind not in contract_kinds:
-                raise QAError(f"contracts scan missing {kind}")
-        kit_cmd(kit, "tests", "detect")
+                raise QAError(f"contracts candidates missing {kind}")
         first_report = (kit / "reports" / "agent-plan.md").read_text(encoding="utf-8")
         kit_cmd(kit, "report")
         second_report = (kit / "reports" / "agent-plan.md").read_text(encoding="utf-8")
@@ -186,7 +205,9 @@ def qa_runtime() -> None:
             raise QAError("agent-plan report is not reproducible")
         census = json.loads((kit / "state" / "census.json").read_text(encoding="utf-8"))
         if "detected_tools" not in census:
-            raise QAError("tools detect did not record detected_tools")
+            raise QAError("census did not record detected_tools")
+        if "contract_candidates" not in census:
+            raise QAError("census did not record contract_candidates")
 
         findings_path = kit / "state" / "findings.jsonl"
         write(findings_path, "{bad json\n")
@@ -198,6 +219,12 @@ def qa_runtime() -> None:
 
         write(findings_path, "")
         append_jsonl(findings_path, finding(metrics={}))
+        kit_cmd(kit, "findings", "validate", expect=1)
+
+        write(findings_path, "")
+        bad_metric = finding()
+        bad_metric["metrics"]["risk_score"] = 2
+        append_jsonl(findings_path, bad_metric)
         kit_cmd(kit, "findings", "validate", expect=1)
 
         write(findings_path, "")

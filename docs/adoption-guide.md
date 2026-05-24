@@ -29,12 +29,6 @@ Default result:
   .codebase-optimization-kit/
 ```
 
-GitHub templates are optional:
-
-```bash
-python scripts/init.py /path/to/project --with-github
-```
-
 ## Validate
 
 ```bash

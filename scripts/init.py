@@ -14,22 +14,15 @@ GITIGNORE_END = "# === codebase-optimization-kit end ==="
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_ROOT = REPO_ROOT / "templates" / "optimization-kit"
-GITHUB_TEMPLATE_ROOT = REPO_ROOT / "templates" / "github"
 
 DEFAULT_TARGET_DIR = ".codebase-optimization-kit"
 PROTECTED_PREFIXES = (
     "state/",
-    "reports/status.md",
     "reports/agent-plan.md",
     "reports/findings-ranked.md",
     "reports/implementation-backlog.md",
     "reports/final-report.md",
 )
-GITHUB_TEMPLATE_FILES = {
-    "pull-request-optimization.md": ".github/PULL_REQUEST_TEMPLATE/optimization.md",
-    "issue-optimization-finding.md": ".github/ISSUE_TEMPLATE/optimization_finding.md",
-    "issue-refactor-proposal.md": ".github/ISSUE_TEMPLATE/refactor_proposal.md",
-}
 
 
 @dataclass(frozen=True)
@@ -39,7 +32,6 @@ class Config:
     target_display: str
     dry_run: bool
     overwrite_kit_files: bool
-    with_github: bool
 
 
 @dataclass
@@ -82,7 +74,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Refresh kit-owned runtime files only. State, findings, packets, reports, locks, and decisions are preserved.",
     )
-    parser.add_argument("--with-github", action="store_true", help="Also copy optional GitHub templates if missing.")
     return parser.parse_args(argv)
 
 
@@ -108,7 +99,6 @@ def build_config(args: argparse.Namespace) -> Config:
         target_display=display,
         dry_run=args.dry_run,
         overwrite_kit_files=args.overwrite_kit_files,
-        with_github=args.with_github,
     )
 
 
@@ -278,19 +268,6 @@ def handle_ignore(config: Config, state: InstallState) -> None:
     update_ignore_file(config.project_root / ".gitignore", config, state)
 
 
-def install_github_templates(config: Config, state: InstallState) -> None:
-    if not config.with_github:
-        return
-    for source_name, destination_name in GITHUB_TEMPLATE_FILES.items():
-        source = GITHUB_TEMPLATE_ROOT / source_name
-        if not source.exists():
-            warn(state, source, "GitHub template is missing")
-            continue
-        destination = config.project_root / Path(destination_name)
-        content = render_runtime_text(source.read_text(encoding="utf-8"), config)
-        write_file(destination, content, config, state, allow_overwrite=False)
-
-
 def main(argv: list[str]) -> int:
     try:
         args = parse_args(argv)
@@ -314,7 +291,6 @@ def main(argv: list[str]) -> int:
         return 1
     install_runtime(config, state)
     handle_ignore(config, state)
-    install_github_templates(config, state)
     print(f"DONE      writes={state.writes} warnings={state.warnings}" + (" dry-run" if config.dry_run else ""))
     return 1 if state.warnings else 0
 

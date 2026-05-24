@@ -8,8 +8,8 @@ All notable changes to `codebase-optimization-kit` will be documented here.
 
 - Rebuilt the installed workspace as `.codebase-optimization-kit/`, a self-contained JSON-first runtime.
 - Replaced the old markdown workflow entrypoint with `AGENT.md`.
-- Added `kit.py`, a standard-library CLI for doctor, census, zone suggestion, agent planning, findings, packets, validation, locks, tool detection, contract scanning, test detection, status, and report generation.
-- Added schemas, generated JSON state, JSON templates, language adapter JSON, lifecycle/risk/evidence/metrics policies, and editable dead-code and behavioral-parity policy templates.
+- Added `kit.py`, a standard-library CLI for doctor, census, zone suggestion, agent planning, findings, packets, validation, locks, contract candidates, status, and report generation.
+- Added schemas, generated JSON state, JSON templates, lifecycle/risk/evidence/metrics policies, and editable project dead-code and behavioral-parity policy files.
 - Made generated reports views over JSON state under `reports/`.
 - Rewrote `scripts/init.py` as an optional safe copier that preserves state and never touches root `AGENTS.md`.
 - Rewrote `scripts/validate.py` to delegate validation to the installed runtime.

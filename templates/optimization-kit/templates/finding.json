@@ -31,7 +31,7 @@
     "risk_score": null
   },
   "recommendation": "needs-evidence",
-  "status": "candidate",
+  "status": "needs-evidence",
   "tests_covering": [],
   "title": "Unused legacy parser appears unreachable",
   "zone": "Z-example"

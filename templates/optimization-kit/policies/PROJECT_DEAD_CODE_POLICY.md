@@ -1,12 +1,8 @@
-# Dead Code Policy Template
+# Project Dead Code Policy
 
-Use this file to strengthen project-specific dead-code rules before approving removals.
+Fill this file with project-specific dead-code rules before approving removals.
 
-## Required Classification
-
-Choose one: `truly_unreachable`, `unused_internal_export`, `unused_public_export`, `legacy_branch`, `duplicate_implementation`, `dormant_planned_code`, `external_contract_code`, `dynamic_usage_unknown`, `generated_or_vendor_code`.
-
-## Required Checks Before Deletion
+Required checks before deletion:
 
 - Static references checked: `<command, query, or method>`
 - Runtime entrypoints checked: `<entrypoints and routing paths>`

@@ -21,7 +21,6 @@ python scripts/init.py /path/to/project --overwrite-kit-files
 This refreshes kit-owned runtime files only. Existing state and generated operational records stay protected:
 
 - `.codebase-optimization-kit/state/`
-- `.codebase-optimization-kit/reports/status.md`
 - `.codebase-optimization-kit/reports/agent-plan.md`
 - `.codebase-optimization-kit/reports/findings-ranked.md`
 - `.codebase-optimization-kit/reports/implementation-backlog.md`

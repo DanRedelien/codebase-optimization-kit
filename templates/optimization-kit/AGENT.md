@@ -21,4 +21,6 @@ python .codebase-optimization-kit/kit.py agents plan
 9. Implementation agents may edit only files listed in the approved packet.
 10. Run `python .codebase-optimization-kit/kit.py validate --enforce-packet` before claiming completion.
 
+Before approving dead-code or behavior-sensitive packets, read `policies/PROJECT_DEAD_CODE_POLICY.md` and `policies/PROJECT_PARITY_POLICY.md` if they contain project-specific additions.
+
 Machine state lives in `state/`. Policies live in `policies/`. Human reports in `reports/` are generated views, not source of truth.

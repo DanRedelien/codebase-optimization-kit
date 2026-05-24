@@ -5,11 +5,9 @@ The kit is safe to include in public repositories when its state does not contai
 ## Public Install
 
 ```bash
-python scripts/init.py /path/to/project --with-github
+python scripts/init.py /path/to/project
 python scripts/validate.py /path/to/project
 ```
-
-GitHub templates are optional and installed only when requested.
 
 ## Private Data
 
