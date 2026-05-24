@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-KIT_VERSION = "1.0.0"
+KIT_VERSION = "0.2.0"
 SCHEMA_VERSION = "1.0"
 KIT_DIR_NAME = ".codebase-optimization-kit"
 MIN_PYTHON = (3, 10)

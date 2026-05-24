@@ -2,7 +2,7 @@
 
 All notable changes to `codebase-optimization-kit` will be documented here.
 
-## 1.0.0 - Unreleased
+## 0.2.0 - 2026-05-24
 
 ### Changed
 
