@@ -1,0 +1,16 @@
+{
+  "enforcement": [
+    "risk >= 3 requires approved packet",
+    "risk == 4 requires human approval record",
+    "risk == 5 cannot be directly implemented from the kit"
+  ],
+  "levels": {
+    "1": "isolated cleanup with direct tests and trivial rollback",
+    "2": "local internal refactor with clear tests",
+    "3": "multi-file or multi-module internal change requiring approved packet",
+    "4": "public contract, dependency, runtime integration, migration, generated code, build, release, or performance-sensitive change requiring explicit human approval",
+    "5": "architectural, security, data model, irreversible, cross-system, or behavior-changing work requiring RFC/ADR; no direct implementation from kit"
+  },
+  "priority_rule": "Priority may rank work, but priority never overrides risk.",
+  "schema_version": "1.0"
+}

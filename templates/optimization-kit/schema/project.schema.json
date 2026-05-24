@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "created_at": {
+      "type": "string"
+    },
+    "kit_version": {
+      "type": "string"
+    },
+    "project_root": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "source_of_truth": {
+      "type": "object"
+    },
+    "target_dir": {
+      "type": "string"
+    },
+    "workspace_type": {
+      "const": "temporary"
+    }
+  },
+  "required": [
+    "kit_version",
+    "schema_version",
+    "workspace_type",
+    "project_root",
+    "target_dir",
+    "created_at",
+    "source_of_truth"
+  ],
+  "schema_version": "1.0",
+  "title": "project",
+  "type": "object"
+}

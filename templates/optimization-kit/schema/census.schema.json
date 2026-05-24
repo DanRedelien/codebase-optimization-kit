@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "language_mix": {
+      "type": "object"
+    },
+    "largest_files": {
+      "type": "array"
+    },
+    "loc_by_directory": {
+      "type": "object"
+    },
+    "summary": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "summary",
+    "language_mix",
+    "loc_by_directory",
+    "largest_files"
+  ],
+  "schema_version": "1.0",
+  "title": "census",
+  "type": "object"
+}

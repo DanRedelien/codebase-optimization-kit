@@ -1,0 +1,18 @@
+{
+  "commands": [
+    {
+      "actual_result": null,
+      "command": "python -m pytest",
+      "exit_code": null,
+      "expected_result": "exit 0"
+    }
+  ],
+  "created_at": "YYYY-MM-DD",
+  "id": "VAL-001",
+  "packet": "PKT-001",
+  "related_findings": [
+    "DEAD-001"
+  ],
+  "scope_check": {},
+  "status": "passed"
+}

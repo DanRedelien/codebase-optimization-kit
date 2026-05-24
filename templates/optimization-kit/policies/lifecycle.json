@@ -1,0 +1,40 @@
+{
+  "finding_statuses": [
+    "candidate",
+    "needs-evidence",
+    "approved",
+    "rejected",
+    "superseded",
+    "implemented",
+    "validated",
+    "rolled-back"
+  ],
+  "packet_statuses": [
+    "draft",
+    "needs-approval",
+    "approved",
+    "in-progress",
+    "implemented",
+    "validated",
+    "rejected",
+    "rolled-back",
+    "superseded"
+  ],
+  "rules": [
+    "Discovery agents do not edit source.",
+    "Implementation requires exactly one approved packet.",
+    "Implementation agents edit only packet allowed files."
+  ],
+  "schema_version": "1.0",
+  "specialist_roles": [
+    "architecture-auditor",
+    "dead-code-auditor",
+    "dependency-auditor",
+    "duplicate-logic-auditor",
+    "test-coverage-auditor",
+    "performance-auditor",
+    "integration-auditor",
+    "domain-risk-auditor",
+    "todo-assumption-auditor"
+  ]
+}

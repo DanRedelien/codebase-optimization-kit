@@ -1,0 +1,13 @@
+{
+  "created_at": "YYYY-MM-DD",
+  "kit_version": "1.0.0",
+  "project_root": ".",
+  "schema_version": "1.0",
+  "source_of_truth": {
+    "project_docs": [],
+    "project_readme": "README.md",
+    "root_agents": "AGENTS.md"
+  },
+  "target_dir": ".codebase-optimization-kit",
+  "workspace_type": "temporary"
+}

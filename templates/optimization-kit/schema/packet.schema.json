@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "allowed_files": {
+      "type": "array"
+    },
+    "behavioral_parity_requirements": {
+      "type": "object"
+    },
+    "dependency_files": {
+      "type": "array"
+    },
+    "docs_files": {
+      "type": "array"
+    },
+    "forbidden_files": {
+      "type": "array"
+    },
+    "generated_files": {
+      "type": "array"
+    },
+    "human_approval": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "public_contracts": {
+      "type": "array"
+    },
+    "related_findings": {
+      "type": "array"
+    },
+    "risk_score": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "rollback_plan": {
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "needs-approval",
+        "approved",
+        "in-progress",
+        "implemented",
+        "validated",
+        "rejected",
+        "rolled-back",
+        "superseded"
+      ]
+    },
+    "validation_commands": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "status",
+    "related_findings",
+    "objective",
+    "allowed_files",
+    "forbidden_files",
+    "public_contracts",
+    "behavioral_parity_requirements",
+    "validation_commands",
+    "rollback_plan",
+    "risk_score",
+    "human_approval"
+  ],
+  "schema_version": "1.0",
+  "title": "packet",
+  "type": "object"
+}

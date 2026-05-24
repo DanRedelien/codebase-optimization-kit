@@ -1,0 +1,24 @@
+{
+  "entrypoints": [
+    "main.go",
+    "cmd/*"
+  ],
+  "extensions": [
+    ".go"
+  ],
+  "language": "go",
+  "lockfiles": [
+    "go.sum"
+  ],
+  "manifests": [
+    "go.mod"
+  ],
+  "risk_signals": [
+    "public packages",
+    "init functions",
+    "build tags"
+  ],
+  "test_commands": [
+    "go test ./..."
+  ]
+}

@@ -1,6 +1,6 @@
 # MCP Roadmap
 
-MCP support is out of scope for v0.1.
+MCP support is out of scope for v1.
 
 ## Possible Future Capabilities
 
@@ -10,7 +10,7 @@ MCP support is out of scope for v0.1.
 - Validate workspace structure.
 - Summarize rollback and archive readiness.
 
-## Non-Goals For v0.1
+## Non-Goals For v1
 
 - No MCP server.
 - No automatic code analysis.
@@ -18,4 +18,4 @@ MCP support is out of scope for v0.1.
 - No dependency graph generation.
 - No benchmark dashboard.
 
-The current implementation remains file-based and script-validated.
+The current implementation remains JSON/JSONL-based and script-validated.

@@ -1,0 +1,68 @@
+{
+  "behavioral_parity": {
+    "meaning": "External behavior, public contracts, outputs, errors, and supported inputs remain compatible unless an intentional change is approved.",
+    "required_evidence": [
+      "contract_list",
+      "parity_checks",
+      "known_differences"
+    ]
+  },
+  "complexity_reduction": {
+    "meaning": "The change reduces maintainability cost through simpler control flow, fewer modules, less coupling, fewer concepts, or clearer ownership.",
+    "required_evidence": [
+      "before_summary",
+      "after_summary",
+      "measured_or_explained_delta"
+    ]
+  },
+  "dead_code_confidence": {
+    "meaning": "There is evidence that code is unused across static references, runtime entrypoints, configs, tests, generated code, and external contracts.",
+    "required_evidence": [
+      "static_reference_check",
+      "entrypoint_check",
+      "config_check",
+      "test_or_runtime_check",
+      "counterevidence"
+    ]
+  },
+  "dependency_reduction": {
+    "meaning": "The change removes, isolates, or simplifies dependencies without breaking runtime, build, or deployment paths.",
+    "required_evidence": [
+      "dependency_files_checked",
+      "import_or_usage_evidence",
+      "validation"
+    ]
+  },
+  "duplicate_logic_reduction": {
+    "meaning": "The change removes or consolidates equivalent logic while preserving behavior.",
+    "required_evidence": [
+      "duplicate_locations",
+      "equivalence_reason",
+      "tests_or_snapshots"
+    ]
+  },
+  "passing_tests": {
+    "meaning": "The relevant automated test suite still passes.",
+    "required_evidence": [
+      "command",
+      "expected_result",
+      "actual_result"
+    ]
+  },
+  "reversibility": {
+    "meaning": "The change can be safely reverted or rolled back with known commands and affected files.",
+    "required_evidence": [
+      "rollback_steps",
+      "files_to_restore",
+      "post_rollback_validation"
+    ]
+  },
+  "risk_score": {
+    "meaning": "The implementation risk is scored before code changes.",
+    "required_evidence": [
+      "risk_level",
+      "risk_reason",
+      "approval_path"
+    ]
+  }
+}

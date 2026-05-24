@@ -1,0 +1,29 @@
+{
+  "approval_rule": "Incomplete evidence means needs-evidence, not approved.",
+  "dead_code_classes": [
+    "truly_unreachable",
+    "unused_internal_export",
+    "unused_public_export",
+    "legacy_branch",
+    "duplicate_implementation",
+    "dormant_planned_code",
+    "external_contract_code",
+    "dynamic_usage_unknown",
+    "generated_or_vendor_code"
+  ],
+  "dead_code_required_checks": [
+    "static_reference_check",
+    "entrypoint_check",
+    "config_check",
+    "test_or_runtime_check",
+    "public_contract_check",
+    "generated_vendor_check",
+    "counterevidence_and_gaps"
+  ],
+  "minimum_finding_evidence": [
+    "source location",
+    "observed behavior or static reference",
+    "counterevidence or uncertainty"
+  ],
+  "schema_version": "1.0"
+}

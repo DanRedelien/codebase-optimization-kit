@@ -1,0 +1,26 @@
+{
+  "allowed_files": [],
+  "behavioral_parity_requirements": {
+    "error_behavior_compatible": [],
+    "inputs_compatible": [],
+    "known_acceptable_differences": [],
+    "outputs_compatible": [],
+    "performance_expectations": []
+  },
+  "dependency_files": [],
+  "docs_files": [],
+  "durable_knowledge_decisions": [],
+  "forbidden_files": [],
+  "generated_files": [],
+  "human_approval": null,
+  "id": "PKT-001",
+  "objective": "Remove legacy parser after confirming no runtime usage.",
+  "public_contracts": [],
+  "related_findings": [
+    "DEAD-001"
+  ],
+  "risk_score": null,
+  "rollback_plan": [],
+  "status": "draft",
+  "validation_commands": []
+}

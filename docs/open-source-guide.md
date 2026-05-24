@@ -1,12 +1,12 @@
 # Open Source Guide
 
-The kit is safe to include in public repositories when the workspace does not contain private scratch data.
+The kit is safe to include in public repositories when its state does not contain private scratch data.
 
 ## Public Install
 
 ```bash
 python scripts/init.py /path/to/project --with-github
-python scripts/validate.py /path/to/project --expect-github
+python scripts/validate.py /path/to/project
 ```
 
 GitHub templates are optional and installed only when requested.
@@ -15,15 +15,15 @@ GitHub templates are optional and installed only when requested.
 
 Do not commit private notes, raw logs, cache files, credentials, customer data, or proprietary audit dumps.
 
-When private scratch space is needed:
+The runtime is designed to be temporary. The default installer-managed `.gitignore` block ignores the installed `.codebase-optimization-kit/` directory.
+
+## Validation
+
+`scripts/validate.py` delegates to the installed runtime:
 
 ```bash
-python scripts/init.py /path/to/project --private-workspace
-python scripts/validate.py /path/to/project --private-workspace
+python .codebase-optimization-kit/kit.py doctor
+python .codebase-optimization-kit/kit.py validate
 ```
 
-The installer adds ignore entries for private, cache, and raw workspace folders.
-
-## Link Validation
-
-v0.1 validates only relative Markdown links that resolve to files inside `.optimization-kit/`. External links and anchor-only links are ignored.
+Use `--enforce-packet` when reviewing implementation work.

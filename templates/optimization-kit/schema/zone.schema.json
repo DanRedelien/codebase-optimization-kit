@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "entrypoints": {
+      "type": "array"
+    },
+    "files": {
+      "type": "integer"
+    },
+    "globs": {
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "loc": {
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "recommended_agents": {
+      "type": "integer"
+    },
+    "risk_notes": {
+      "type": "array"
+    },
+    "tests": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "globs",
+    "loc",
+    "files",
+    "entrypoints",
+    "tests",
+    "risk_notes",
+    "recommended_agents"
+  ],
+  "schema_version": "1.0",
+  "title": "zone",
+  "type": "object"
+}

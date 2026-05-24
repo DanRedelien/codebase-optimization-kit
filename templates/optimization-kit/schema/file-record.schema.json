@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "bytes": {
+      "type": "integer"
+    },
+    "is_generated": {
+      "type": "boolean"
+    },
+    "is_test": {
+      "type": "boolean"
+    },
+    "is_vendor": {
+      "type": "boolean"
+    },
+    "language": {
+      "type": "string"
+    },
+    "loc": {
+      "type": "integer"
+    },
+    "path": {
+      "type": "string"
+    },
+    "signals": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "zone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "path",
+    "language",
+    "bytes",
+    "loc",
+    "is_test",
+    "is_generated",
+    "is_vendor",
+    "zone",
+    "signals"
+  ],
+  "schema_version": "1.0",
+  "title": "file-record",
+  "type": "object"
+}

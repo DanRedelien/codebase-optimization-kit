@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "affected_files": {
+      "type": "array"
+    },
+    "category": {
+      "type": "string"
+    },
+    "claim": {
+      "type": "string"
+    },
+    "contracts_touched": {
+      "type": "array"
+    },
+    "counterevidence": {
+      "type": "array"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "dead_code": {
+      "type": "object"
+    },
+    "evidence": {
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "candidate",
+        "needs-evidence",
+        "approved",
+        "rejected",
+        "superseded",
+        "implemented",
+        "validated",
+        "rolled-back"
+      ]
+    },
+    "tests_covering": {
+      "type": "array"
+    },
+    "title": {
+      "type": "string"
+    },
+    "zone": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "status",
+    "category",
+    "zone",
+    "title",
+    "claim",
+    "evidence",
+    "counterevidence",
+    "affected_files",
+    "metrics",
+    "recommendation",
+    "created_by",
+    "created_at"
+  ],
+  "schema_version": "1.0",
+  "title": "finding",
+  "type": "object"
+}

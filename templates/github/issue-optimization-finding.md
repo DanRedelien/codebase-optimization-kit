@@ -19,6 +19,6 @@ Describe the smallest useful next step.
 
 List the checks that would prove the finding or disprove it.
 
-## Temporary Workspace
+## Temporary Runtime
 
-Record detailed scratch work inside `.optimization-kit/workspace/`, not in permanent project docs.
+Record structured findings inside `.codebase-optimization-kit/state/findings.jsonl`, not in permanent project docs.

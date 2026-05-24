@@ -1,0 +1,22 @@
+{
+  "allowed_reads": [
+    "src/core/**"
+  ],
+  "allowed_writes": [
+    ".codebase-optimization-kit/state/findings.jsonl"
+  ],
+  "forbidden_actions": [
+    "source_edit",
+    "dependency_change",
+    "delete_code"
+  ],
+  "id": "TASK-001",
+  "objective": "Find optimization opportunities with evidence only.",
+  "required_outputs": [
+    "findings",
+    "zone_summary"
+  ],
+  "role": "architecture-auditor",
+  "status": "open",
+  "zone": "Z-core"
+}

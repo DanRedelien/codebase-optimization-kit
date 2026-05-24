@@ -1,13 +1,13 @@
 # Update Strategy
 
-v0.1 uses conservative updates.
+The optional installer uses conservative updates.
 
 ## Default Behavior
 
 - Never delete files.
 - Never overwrite existing files by default.
-- Never overwrite root `AGENTS.md`.
-- Never overwrite workspace artifacts.
+- Never write or overwrite root `AGENTS.md`.
+- Never overwrite existing project files.
 - Only change `.gitignore` inside the managed marker block.
 
 ## Kit-Owned Updates
@@ -18,20 +18,17 @@ Use:
 python scripts/init.py /path/to/project --overwrite-kit-files
 ```
 
-This may overwrite known kit-owned files only when the existing manifest is compatible. If `--with-github` is also used, it may overwrite the known optimization GitHub templates.
+This refreshes kit-owned runtime files only. Existing state and generated operational records stay protected:
 
-Protected artifacts stay protected:
+- `.codebase-optimization-kit/state/`
+- `.codebase-optimization-kit/reports/status.md`
+- `.codebase-optimization-kit/reports/agent-plan.md`
+- `.codebase-optimization-kit/reports/findings-ranked.md`
+- `.codebase-optimization-kit/reports/implementation-backlog.md`
+- `.codebase-optimization-kit/reports/final-report.md`
 
-- `.optimization-kit/workspace/maps/`
-- `.optimization-kit/workspace/findings/`
-- `.optimization-kit/workspace/reports/`
-- `.optimization-kit/workspace/context-packets/`
-- `.optimization-kit/workspace/implementation-packets/`
-- `.optimization-kit/workspace/decisions/`
-- `.optimization-kit/workspace/private/`
-- `.optimization-kit/workspace/cache/`
-- `.optimization-kit/workspace/raw/`
+Findings, packets, validations, locks, decisions, generated reports, and project-specific state should be treated as target-project artifacts.
 
-## Schema Rule
+## Manual Copy Updates
 
-If an installed manifest has a newer schema, the installer warns and refuses overwrite. If it has an older schema, the installer installs only missing files unless a future update command exists.
+Manual copy remains supported. When refreshing manually, copy only runtime-owned files unless the human explicitly chooses to replace state.

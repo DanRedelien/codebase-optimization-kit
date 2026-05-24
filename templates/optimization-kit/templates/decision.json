@@ -1,0 +1,10 @@
+{
+  "created_at": "YYYY-MM-DD",
+  "decided_by": "human",
+  "decision": "approved",
+  "id": "DEC-001",
+  "related_findings": [],
+  "related_packets": [],
+  "summary": "Approve PKT-001 for implementation.",
+  "type": "human-approval"
+}

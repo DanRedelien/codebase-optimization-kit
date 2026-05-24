@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "allowed_reads": {
+      "type": "array"
+    },
+    "allowed_writes": {
+      "type": "array"
+    },
+    "forbidden_actions": {
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "required_outputs": {
+      "type": "array"
+    },
+    "role": {
+      "enum": [
+        "architecture-auditor",
+        "dead-code-auditor",
+        "dependency-auditor",
+        "duplicate-logic-auditor",
+        "test-coverage-auditor",
+        "performance-auditor",
+        "integration-auditor",
+        "domain-risk-auditor",
+        "todo-assumption-auditor"
+      ]
+    },
+    "status": {
+      "type": "string"
+    },
+    "zone": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "role",
+    "zone",
+    "objective",
+    "allowed_reads",
+    "allowed_writes",
+    "required_outputs",
+    "forbidden_actions",
+    "status"
+  ],
+  "schema_version": "1.0",
+  "title": "agent-task",
+  "type": "object"
+}

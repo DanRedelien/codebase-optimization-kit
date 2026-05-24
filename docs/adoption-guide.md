@@ -2,7 +2,21 @@
 
 Use `codebase-optimization-kit` for one bounded audit/refactor pass inside an existing project.
 
-## Install
+## Manual Copy
+
+Manual copy is the primary workflow:
+
+```bash
+cp -R templates/optimization-kit /path/to/project/.codebase-optimization-kit
+```
+
+Then ask the agent to read:
+
+```text
+.codebase-optimization-kit/AGENT.md
+```
+
+## Optional Installer
 
 ```bash
 python scripts/init.py /path/to/project
@@ -12,24 +26,10 @@ Default result:
 
 ```text
 /path/to/project/
-  .optimization-kit/
+  .codebase-optimization-kit/
 ```
 
-## Choose Mode
-
-Public or normal workspace:
-
-```bash
-python scripts/init.py /path/to/project
-```
-
-Private scratch folders:
-
-```bash
-python scripts/init.py /path/to/project --private-workspace
-```
-
-GitHub templates:
+GitHub templates are optional:
 
 ```bash
 python scripts/init.py /path/to/project --with-github
@@ -41,14 +41,12 @@ python scripts/init.py /path/to/project --with-github
 python scripts/validate.py /path/to/project
 ```
 
-Use explicit expectations when needed:
+Use packet enforcement after implementation work:
 
 ```bash
-python scripts/validate.py /path/to/project --private-workspace --expect-github
+python scripts/validate.py /path/to/project --enforce-packet
 ```
-
-`--check-working-tree` is optional. In v0.1 it only warns when changed project files are outside the active implementation packet.
 
 ## Operating Rule
 
-Keep permanent project docs, root `AGENTS.md`, and repository contribution rules as source of truth. The kit is temporary workflow structure only.
+Keep permanent project docs, root `AGENTS.md`, public contracts, and tests as source of truth. The kit is temporary workflow state only.

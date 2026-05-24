@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "meaning": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "required_evidence": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "meaning",
+    "required_evidence"
+  ],
+  "schema_version": "1.0",
+  "title": "metric",
+  "type": "object"
+}

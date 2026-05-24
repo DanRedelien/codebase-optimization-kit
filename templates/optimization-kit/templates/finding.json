@@ -1,0 +1,38 @@
+{
+  "affected_files": [],
+  "category": "dead-code",
+  "claim": "src/example.py has no confirmed runtime path.",
+  "contracts_touched": [],
+  "counterevidence": [],
+  "created_at": "YYYY-MM-DD",
+  "created_by": "agent-id",
+  "dead_code": {
+    "classification": "dynamic_usage_unknown",
+    "required_checks": {
+      "config_check": null,
+      "counterevidence_and_gaps": null,
+      "entrypoint_check": null,
+      "generated_vendor_check": null,
+      "public_contract_check": null,
+      "static_reference_check": null,
+      "test_or_runtime_check": null
+    }
+  },
+  "evidence": [],
+  "id": "DEAD-001",
+  "metrics": {
+    "behavioral_parity": null,
+    "complexity_reduction": null,
+    "dead_code_confidence": null,
+    "dependency_reduction": null,
+    "duplicate_logic_reduction": null,
+    "passing_tests": null,
+    "reversibility": null,
+    "risk_score": null
+  },
+  "recommendation": "needs-evidence",
+  "status": "candidate",
+  "tests_covering": [],
+  "title": "Unused legacy parser appears unreachable",
+  "zone": "Z-example"
+}

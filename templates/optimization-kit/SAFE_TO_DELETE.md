@@ -1,12 +1,10 @@
 # Safe To Delete
 
-`.optimization-kit/` is safe to delete when:
+`.codebase-optimization-kit/` is safe to delete when:
 
-- The final summary has been exported.
+- `reports/final-report.md` has been generated and exported if needed.
 - Accepted changes have been merged or intentionally abandoned.
-- Rollback plans for merged changes are no longer needed.
-- Any durable knowledge has been promoted through an approved proposal.
+- Rollback plans and validation records are no longer needed in the working tree.
+- Any durable knowledge has been promoted through an approved project process.
 
-Deleting this directory must not break the project. The kit is temporary workflow tooling and must not be required by runtime code, tests, builds, docs, or release processes.
-
-Before deletion, preserve only the artifacts maintainers explicitly want to keep. Do not copy findings into `docs/` unless a durable-knowledge promotion proposal has been approved.
+Deleting this directory must not break runtime code, tests, builds, releases, or permanent docs. Do not copy findings into durable docs unless a human approves that promotion.
