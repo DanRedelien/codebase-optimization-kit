@@ -2,6 +2,11 @@
   "allowed_reads": [
     "src/core/**"
   ],
+  "supporting_reads": [
+    "AGENTS.md",
+    "README.md",
+    "tests/core/**"
+  ],
   "allowed_writes": [
     ".codebase-optimization-kit/state/findings.jsonl"
   ],

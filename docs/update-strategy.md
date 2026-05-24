@@ -8,7 +8,7 @@ The optional installer uses conservative updates.
 - Never overwrite existing files by default.
 - Never write or overwrite root `AGENTS.md`.
 - Never overwrite existing project files.
-- Only change `.gitignore` inside the managed marker block.
+- In git projects, write ignore protection to `.git/info/exclude`; outside git, change only `.gitignore` inside the managed marker block.
 
 ## Kit-Owned Updates
 

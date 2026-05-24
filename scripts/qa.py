@@ -55,11 +55,13 @@ def create_project(root: Path) -> Path:
     project.mkdir()
     write(project / "README.md", "# Sample\n")
     write(project / "src" / "core" / "app.py", "def add(a, b):\n    return a + b\n")
+    write(project / "src" / "core" / "routes.py", "ROUTES = ['/health']\n")
     write(project / "tests" / "test_app.py", "from src.core.app import add\n\ndef test_add():\n    assert add(1, 2) == 3\n")
+    write(project / ".env.example", "APP_ENV=test\n")
     write(project / "package.json", "{\"scripts\":{\"test\":\"echo ok\"}}\n")
     write(project / "package-lock.json", "{}\n")
     run(["git", "init"], project)
-    run(["git", "add", "README.md", "src/core/app.py", "tests/test_app.py", "package.json", "package-lock.json"], project)
+    run(["git", "add", "README.md", "src/core/app.py", "src/core/routes.py", "tests/test_app.py", ".env.example", "package.json", "package-lock.json"], project)
     run(["git", "-c", "user.email=qa@example.com", "-c", "user.name=QA", "commit", "-m", "initial"], project)
     return project
 
@@ -144,20 +146,38 @@ def qa_runtime() -> None:
             "AGENT.md",
             "kit.py",
             "schema/finding.schema.json",
-            "state/findings.jsonl",
+            "state/project.json",
             "policies/metrics-policy.json",
             "templates/packet.json",
             "reports/README.md",
         ]:
             if not (kit / relative).exists():
                 raise QAError(f"missing installed runtime path: {relative}")
+        if (kit / "state" / "findings.jsonl").exists():
+            raise QAError("template should not ship empty findings.jsonl")
 
         kit_cmd(kit, "doctor")
+        if not (kit / "state" / "findings.jsonl").exists():
+            raise QAError("doctor did not create findings.jsonl")
         kit_cmd(kit, "census")
         kit_cmd(kit, "zones", "suggest")
         kit_cmd(kit, "agents", "plan")
+        tasks = [(json.loads(line)) for line in (kit / "state" / "agent-tasks.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+        roles = {task["role"] for task in tasks}
+        for role in {"architecture-auditor", "dead-code-auditor", "test-coverage-auditor", "duplicate-logic-auditor", "integration-auditor"}:
+            if role not in roles:
+                raise QAError(f"agents plan did not include role: {role}")
+        if not any("README.md" in task.get("supporting_reads", []) for task in tasks):
+            raise QAError("agent tasks missing authority supporting reads")
+        if not any("package.json" in task.get("supporting_reads", []) for task in tasks):
+            raise QAError("agent tasks missing manifest supporting reads")
         kit_cmd(kit, "tools", "detect")
         kit_cmd(kit, "contracts", "scan")
+        contracts = json.loads((kit / "state" / "contracts.json").read_text(encoding="utf-8"))["contracts"]
+        contract_kinds = {item["kind"] for item in contracts}
+        for kind in {"package-or-build-contract-candidate", "config-contract-candidate", "route-or-handler-candidate"}:
+            if kind not in contract_kinds:
+                raise QAError(f"contracts scan missing {kind}")
         kit_cmd(kit, "tests", "detect")
         first_report = (kit / "reports" / "agent-plan.md").read_text(encoding="utf-8")
         kit_cmd(kit, "report")
@@ -170,6 +190,14 @@ def qa_runtime() -> None:
 
         findings_path = kit / "state" / "findings.jsonl"
         write(findings_path, "{bad json\n")
+        kit_cmd(kit, "findings", "validate", expect=1)
+
+        write(findings_path, "")
+        append_jsonl(findings_path, finding())
+        kit_cmd(kit, "findings", "validate", expect=1)
+
+        write(findings_path, "")
+        append_jsonl(findings_path, finding(metrics={}))
         kit_cmd(kit, "findings", "validate", expect=1)
 
         write(findings_path, "")
@@ -213,8 +241,17 @@ def qa_runtime() -> None:
         kit_cmd(kit, "packets", "validate", expect=1)
 
         write(packets_path, "")
+        append_jsonl(packets_path, approved_packet(status="in-progress", allowed_files=[]))
+        kit_cmd(kit, "packets", "validate", expect=1)
+
+        write(packets_path, "")
         append_jsonl(packets_path, approved_packet())
         append_jsonl(packets_path, approved_packet(id="PKT-002"))
+        kit_cmd(kit, "packets", "validate", expect=1)
+
+        write(packets_path, "")
+        append_jsonl(packets_path, approved_packet(status="in-progress"))
+        append_jsonl(packets_path, approved_packet(id="PKT-002", status="implemented"))
         kit_cmd(kit, "packets", "validate", expect=1)
 
 
@@ -275,6 +312,21 @@ def qa_installer() -> None:
         gitignore = (project / ".gitignore").read_text(encoding="utf-8")
         if gitignore.count("# === codebase-optimization-kit start ===") != 1:
             raise QAError(".gitignore managed block is not idempotent")
+
+    with tempfile.TemporaryDirectory() as raw:
+        project = create_project(Path(raw))
+        run([PYTHON, str(INIT), str(project)], ROOT)
+        if (project / ".gitignore").exists():
+            raise QAError("installer should use .git/info/exclude for git projects")
+        status = run(["git", "-C", str(project), "status", "--porcelain"], ROOT).stdout
+        if ".gitignore" in status:
+            raise QAError("installer dirtied .gitignore in a git project")
+        kit = project / ".codebase-optimization-kit"
+        packets_path = kit / "state" / "packets.jsonl"
+        write(packets_path, "")
+        append_jsonl(packets_path, approved_packet())
+        write(project / "src" / "core" / "app.py", "def add(a, b):\n    return a + b + 0\n")
+        kit_cmd(kit, "validate", "--enforce-packet")
 
 
 def main() -> int:

@@ -41,7 +41,7 @@ project/
   .codebase-optimization-kit/
 ```
 
-JSON and JSONL files under `state/` are the source of truth. Markdown files are short entrypoints, editable policy templates, or generated reports.
+JSON and JSONL files under `state/` are the source of truth. Only `state/project.json` ships by default; `doctor` creates the remaining state files on first run. Markdown files are short entrypoints, editable policy templates, or generated reports.
 
 ## Manual Copy Workflow
 
@@ -83,7 +83,7 @@ Installer safety rules:
 - It never writes or overwrites root `AGENTS.md`.
 - It never overwrites existing project files.
 - It preserves existing kit state, findings, packets, reports, locks, and decisions.
-- It updates only its own managed `.gitignore` block.
+- In git projects, it writes the managed ignore block to `.git/info/exclude`; outside git it falls back to `.gitignore`.
 - It refuses symlink or junction installs.
 
 ## Runtime Commands

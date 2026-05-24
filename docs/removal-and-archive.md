@@ -17,7 +17,7 @@ Delete the installed runtime directory:
 .codebase-optimization-kit/
 ```
 
-Then remove the managed `.gitignore` marker block if no future kit work is planned.
+Then remove the managed `.git/info/exclude` or `.gitignore` marker block if no future kit work is planned.
 
 ## Archive
 

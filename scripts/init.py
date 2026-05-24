@@ -248,8 +248,7 @@ def replace_managed_block(existing: str, block: str) -> tuple[str | None, str]:
     return existing[:start] + block + existing[end:], "replace"
 
 
-def handle_gitignore(config: Config, state: InstallState) -> None:
-    path = config.project_root / ".gitignore"
+def update_ignore_file(path: Path, config: Config, state: InstallState) -> None:
     if not ensure_safe_path(path, config, state):
         return
     block = gitignore_block(config)
@@ -269,6 +268,14 @@ def handle_gitignore(config: Config, state: InstallState) -> None:
     if not config.dry_run:
         path.write_text(updated, encoding="utf-8", newline="\n")
     state.writes += 1
+
+
+def handle_ignore(config: Config, state: InstallState) -> None:
+    git_dir = config.project_root / ".git"
+    if git_dir.is_dir() and not is_link(git_dir):
+        update_ignore_file(git_dir / "info" / "exclude", config, state)
+        return
+    update_ignore_file(config.project_root / ".gitignore", config, state)
 
 
 def install_github_templates(config: Config, state: InstallState) -> None:
@@ -306,7 +313,7 @@ def main(argv: list[str]) -> int:
         print(f"ERROR target path is not a real directory: {target_root}", file=sys.stderr)
         return 1
     install_runtime(config, state)
-    handle_gitignore(config, state)
+    handle_ignore(config, state)
     install_github_templates(config, state)
     print(f"DONE      writes={state.writes} warnings={state.warnings}" + (" dry-run" if config.dry_run else ""))
     return 1 if state.warnings else 0

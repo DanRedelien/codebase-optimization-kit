@@ -36,6 +36,9 @@
     "status": {
       "type": "string"
     },
+    "supporting_reads": {
+      "type": "array"
+    },
     "zone": {
       "type": "string"
     }
@@ -46,6 +49,7 @@
     "zone",
     "objective",
     "allowed_reads",
+    "supporting_reads",
     "allowed_writes",
     "required_outputs",
     "forbidden_actions",

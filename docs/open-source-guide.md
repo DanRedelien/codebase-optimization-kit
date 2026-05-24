@@ -15,7 +15,7 @@ GitHub templates are optional and installed only when requested.
 
 Do not commit private notes, raw logs, cache files, credentials, customer data, or proprietary audit dumps.
 
-The runtime is designed to be temporary. The default installer-managed `.gitignore` block ignores the installed `.codebase-optimization-kit/` directory.
+The runtime is designed to be temporary. In git projects, the installer-managed ignore block is written to `.git/info/exclude`; outside git it falls back to `.gitignore`.
 
 ## Validation
 

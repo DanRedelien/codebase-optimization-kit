@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-KIT_VERSION = "0.2.0"
+KIT_VERSION = "1.0.0"
 SCHEMA_VERSION = "1.0"
 KIT_DIR_NAME = ".codebase-optimization-kit"
 MIN_PYTHON = (3, 10)
@@ -48,6 +48,7 @@ PACKET_STATUSES = {
     "superseded",
 }
 ACTIVE_PACKET_STATUSES = {"approved", "in-progress", "implemented"}
+IMPLEMENTATION_PACKET_STATUSES = {"approved", "in-progress", "implemented", "validated"}
 ROLES = [
     "architecture-auditor",
     "dead-code-auditor",
@@ -89,6 +90,7 @@ METRICS = [
     "risk_score",
     "reversibility",
 ]
+POLICIES = HERE / "policies"
 
 LANGUAGE_BY_EXTENSION = {
     ".py": "python",
@@ -330,6 +332,26 @@ def non_empty(value: Any) -> bool:
     return True
 
 
+def load_metrics_policy() -> dict[str, Any]:
+    value = load_json(POLICIES / "metrics-policy.json", {})
+    return value if isinstance(value, dict) else {}
+
+
+def metric_value_errors(name: str, value: Any, policy: dict[str, Any], label: str) -> list[str]:
+    if value is None:
+        return []
+    if name == "risk_score" and isinstance(value, int) and not isinstance(value, bool):
+        return [] if 1 <= value <= 5 else [f"{label} risk_score must be between 1 and 5"]
+    if not isinstance(value, dict):
+        return [f"{label} metric {name} must be an evidence object when claimed"]
+    required = policy.get(name, {}).get("required_evidence", [])
+    errors = []
+    for key in required:
+        if not non_empty(value.get(key)):
+            errors.append(f"{label} metric {name} missing evidence field: {key}")
+    return errors
+
+
 def print_errors(errors: list[str], warnings: list[str] | None = None) -> int:
     warnings = warnings or []
     for warning in warnings:
@@ -353,6 +375,19 @@ def validate_json_state() -> list[str]:
     return errors
 
 
+def load_schema(name: str) -> tuple[dict[str, Any] | None, list[str]]:
+    path = SCHEMA / name
+    if not path.exists():
+        return None, [f"missing schema: {rel(path)}"]
+    try:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return None, [f"{rel(path)} is not valid JSON: {exc.msg}"]
+    if not isinstance(schema, dict):
+        return None, [f"{rel(path)} must contain a JSON object"]
+    return schema, []
+
+
 def validate_schemas() -> list[str]:
     names = [
         "project.schema.json",
@@ -368,14 +403,129 @@ def validate_schemas() -> list[str]:
     ]
     errors: list[str] = []
     for name in names:
-        path = SCHEMA / name
-        if not path.exists():
-            errors.append(f"missing schema: {rel(path)}")
-            continue
-        try:
-            json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            errors.append(f"{rel(path)} is not valid JSON: {exc.msg}")
+        _, schema_errors = load_schema(name)
+        errors.extend(schema_errors)
+    return errors
+
+
+def type_matches(value: Any, expected: str) -> bool:
+    if expected == "object":
+        return isinstance(value, dict)
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "null":
+        return value is None
+    return True
+
+
+def validate_schema_value(schema: dict[str, Any], value: Any, label: str) -> list[str]:
+    errors: list[str] = []
+    expected_type = schema.get("type")
+    if isinstance(expected_type, list):
+        if not any(isinstance(item, str) and type_matches(value, item) for item in expected_type):
+            errors.append(f"{label} must be one of types: {', '.join(str(item) for item in expected_type)}")
+            return errors
+    elif isinstance(expected_type, str) and not type_matches(value, expected_type):
+        errors.append(f"{label} must be type {expected_type}")
+        return errors
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{label} must equal {schema['const']!r}")
+    if "enum" in schema and value not in schema["enum"]:
+        errors.append(f"{label} must be one of: {', '.join(str(item) for item in schema['enum'])}")
+    if isinstance(value, dict):
+        for key in schema.get("required", []):
+            if key not in value:
+                errors.append(f"{label} missing required field: {key}")
+        properties = schema.get("properties", {})
+        if isinstance(properties, dict):
+            for key, child_schema in properties.items():
+                if key in value and isinstance(child_schema, dict):
+                    errors.extend(validate_schema_value(child_schema, value[key], f"{label}.{key}"))
+    if isinstance(value, list) and isinstance(schema.get("items"), dict):
+        item_schema = schema["items"]
+        for index, item in enumerate(value):
+            errors.extend(validate_schema_value(item_schema, item, f"{label}[{index}]"))
+    return errors
+
+
+def validate_json_file_with_schema(filename: str, schema_name: str) -> list[str]:
+    schema, errors = load_schema(schema_name)
+    if errors or schema is None:
+        return errors
+    path = state(filename)
+    if not path.exists():
+        return []
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return [f"{rel(path)} is not valid JSON: {exc.msg}"]
+    return validate_schema_value(schema, value, rel(path))
+
+
+def validate_json_array_with_schema(filename: str, key: str, schema_name: str) -> list[str]:
+    schema, errors = load_schema(schema_name)
+    if errors or schema is None:
+        return errors
+    path = state(filename)
+    if not path.exists():
+        return []
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return [f"{rel(path)} is not valid JSON: {exc.msg}"]
+    if not isinstance(value, dict) or not isinstance(value.get(key), list):
+        return [f"{rel(path)} must contain array field: {key}"]
+    result: list[str] = []
+    for index, item in enumerate(value[key]):
+        result.extend(validate_schema_value(schema, item, f"{rel(path)}.{key}[{index}]"))
+    return result
+
+
+def validate_jsonl_with_schema(filename: str, schema_name: str) -> list[str]:
+    schema, errors = load_schema(schema_name)
+    if errors or schema is None:
+        return errors
+    path = state(filename)
+    records, read_errors = read_jsonl(path)
+    result = list(read_errors)
+    for index, record in enumerate(records, 1):
+        result.extend(validate_schema_value(schema, record, f"{rel(path)}:{index}"))
+    return result
+
+
+def validate_state_schemas() -> list[str]:
+    errors: list[str] = []
+    errors.extend(validate_json_file_with_schema("project.json", "project.schema.json"))
+    errors.extend(validate_json_file_with_schema("census.json", "census.schema.json"))
+    errors.extend(validate_json_array_with_schema("zones.json", "zones", "zone.schema.json"))
+    errors.extend(validate_jsonl_with_schema("file-tree.jsonl", "file-record.schema.json"))
+    errors.extend(validate_jsonl_with_schema("agent-tasks.jsonl", "agent-task.schema.json"))
+    errors.extend(validate_jsonl_with_schema("findings.jsonl", "finding.schema.json"))
+    errors.extend(validate_jsonl_with_schema("packets.jsonl", "packet.schema.json"))
+    errors.extend(validate_jsonl_with_schema("validations.jsonl", "validation.schema.json"))
+    errors.extend(validate_jsonl_with_schema("locks.jsonl", "lock.schema.json"))
+    return errors
+
+
+def validate_policy_drift() -> list[str]:
+    errors: list[str] = []
+    lifecycle = load_json(POLICIES / "lifecycle.json", {})
+    if isinstance(lifecycle, dict):
+        if set(lifecycle.get("finding_statuses", [])) != FINDING_STATUSES:
+            errors.append("policies/lifecycle.json finding_statuses drift from kit.py")
+        if set(lifecycle.get("packet_statuses", [])) != PACKET_STATUSES:
+            errors.append("policies/lifecycle.json packet_statuses drift from kit.py")
+        if set(lifecycle.get("specialist_roles", [])) != set(ROLES):
+            errors.append("policies/lifecycle.json specialist_roles drift from kit.py")
+    metrics_policy = load_json(POLICIES / "metrics-policy.json", {})
+    if isinstance(metrics_policy, dict) and set(metrics_policy.keys()) != set(METRICS):
+        errors.append("policies/metrics-policy.json keys drift from kit.py metrics")
     return errors
 
 
@@ -400,6 +550,44 @@ def validate_managed_gitignore() -> list[str]:
     return errors
 
 
+def strip_managed_ignore_block(text: str) -> str | None:
+    if GITIGNORE_START not in text and GITIGNORE_END not in text:
+        return text
+    if text.count(GITIGNORE_START) != 1 or text.count(GITIGNORE_END) != 1:
+        return None
+    start = text.index(GITIGNORE_START)
+    end = text.index(GITIGNORE_END) + len(GITIGNORE_END)
+    while end < len(text) and text[end] in {"\r", "\n"}:
+        end += 1
+    return text[:start] + text[end:]
+
+
+def git_head_file(path: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(PROJECT_ROOT), "show", f"HEAD:{path}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout if result.returncode == 0 else ""
+
+
+def managed_gitignore_only_change(path: str) -> bool:
+    if path != ".gitignore":
+        return False
+    current_path = PROJECT_ROOT / ".gitignore"
+    if not current_path.exists():
+        return False
+    current = current_path.read_text(encoding="utf-8")
+    stripped_current = strip_managed_ignore_block(current)
+    if stripped_current is None:
+        return False
+    stripped_base = strip_managed_ignore_block(git_head_file(".gitignore"))
+    if stripped_base is None:
+        stripped_base = git_head_file(".gitignore")
+    return stripped_current.strip() == stripped_base.strip()
+
+
 def doctor(_: argparse.Namespace) -> int:
     ensure_runtime()
     errors: list[str] = []
@@ -412,6 +600,8 @@ def doctor(_: argparse.Namespace) -> int:
         if not directory.is_dir():
             errors.append(f"missing runtime directory: {rel(directory)}")
     errors.extend(validate_schemas())
+    errors.extend(validate_state_schemas())
+    errors.extend(validate_policy_drift())
     errors.extend(validate_json_state())
     errors.extend(validate_managed_gitignore())
     if not (PROJECT_ROOT / ".git").exists():
@@ -622,16 +812,82 @@ def zones_suggest(_: argparse.Namespace) -> int:
     return 0
 
 
+def contract_candidates_from_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(path: str, kind: str, notes: list[str] | None = None) -> None:
+        key = (path, kind)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append({"path": path, "kind": kind, "notes": notes or []})
+
+    for record in records:
+        path = str(record.get("path", ""))
+        path_parts = parts(path)
+        name = PurePosixPath(path).name.lower()
+        lowered = path.lower()
+        if path in {"README.md", "AGENTS.md"} or (path_parts and path_parts[0] in {"docs", "proto", "schema", "schemas"}) or name in {"openapi.yaml", "openapi.json"}:
+            add(path, "authority-or-contract-candidate")
+        if name in {"package.json", "pyproject.toml", "setup.py", "go.mod", "cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts"}:
+            add(path, "package-or-build-contract-candidate")
+        if name in CONFIG_NAMES or name.startswith(".env") or "config" in lowered:
+            add(path, "config-contract-candidate")
+        if name in {"index.ts", "index.js", "__init__.py", "lib.rs", "mod.rs"}:
+            add(path, "public-export-candidate")
+        if name.startswith("main.") or name.startswith("cli.") or (path_parts and path_parts[0] in {"bin", "cmd"}):
+            add(path, "cli-entrypoint-candidate")
+        if name.split(".", 1)[0] in {"routes", "pages", "api", "controllers", "handlers", "endpoints"} or any(part.lower() in {"routes", "pages", "api", "controllers", "handlers", "endpoints"} for part in path_parts):
+            add(path, "route-or-handler-candidate")
+    return sorted(candidates, key=lambda item: (item["kind"], item["path"]))
+
+
+def supporting_reads_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
+    zone_id = zone.get("id")
+    support: list[str] = []
+    for authority in ["AGENTS.md", "README.md"]:
+        if (PROJECT_ROOT / authority).exists():
+            support.append(authority)
+    if (PROJECT_ROOT / "docs").is_dir():
+        support.append("docs/**")
+    census_doc = load_json(state("census.json"), {})
+    if isinstance(census_doc, dict):
+        support.extend(census_doc.get("package_manifests", []) or [])
+        support.extend(census_doc.get("config_files", []) or [])
+    support.extend(zone.get("tests") or [])
+    support.extend(record["path"] for record in records if record.get("zone") == zone_id and "test" in (record.get("signals") or []))
+    contracts = load_json(state("contracts.json"), {"contracts": []})
+    contract_records = contracts.get("contracts", []) if isinstance(contracts, dict) else []
+    if not contract_records:
+        contract_records = contract_candidates_from_records(records)
+    support.extend(str(item.get("path")) for item in contract_records if item.get("path"))
+    clean: list[str] = []
+    for item in support:
+        normalized = norm(item)
+        if normalized not in clean:
+            clean.append(normalized)
+    return clean[:80]
+
+
 def roles_for(zone: dict[str, Any]) -> list[str]:
-    roles = ["architecture-auditor"]
+    loc = int(zone.get("loc") or 0)
+    files = int(zone.get("files") or 0)
+    risk_notes = set(zone.get("risk_notes") or [])
+    roles = ["architecture-auditor", "dead-code-auditor", "test-coverage-auditor", "duplicate-logic-auditor", "integration-auditor"]
     if "dependency-metadata" in set(zone.get("risk_notes") or []):
         roles.append("dependency-auditor")
-    roles.extend(["dead-code-auditor", "test-coverage-auditor", "integration-auditor", "duplicate-logic-auditor"])
+    if loc >= 12000 or files >= 120 or "oversized-zone" in risk_notes:
+        roles.append("performance-auditor")
+    if risk_notes:
+        roles.append("domain-risk-auditor")
+    if loc >= 12000 or files >= 120:
+        roles.append("todo-assumption-auditor")
     unique = []
     for role in roles:
         if role not in unique:
             unique.append(role)
-    return unique[: int(zone.get("recommended_agents") or 1)]
+    return unique
 
 
 def agents_plan(_: argparse.Namespace) -> int:
@@ -640,11 +896,15 @@ def agents_plan(_: argparse.Namespace) -> int:
     if not zones:
         zones_suggest(argparse.Namespace())
         zones = load_json(state("zones.json"), {"zones": []}).get("zones", [])
+    records, _ = read_jsonl(state("file-tree.jsonl"))
     tasks = []
     number = 1
     for zone in zones:
-        for role in roles_for(zone):
-            tasks.append({"id": f"TASK-{number:03d}", "role": role, "zone": zone["id"], "objective": "Find optimization opportunities with evidence only; do not edit source files.", "allowed_reads": list(zone.get("globs") or []), "allowed_writes": [f"{HERE.name}/state/findings.jsonl"], "required_outputs": ["findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code"], "max_context_files": min(int(zone.get("files") or 0), 200), "max_context_tokens": 120000, "status": "open"})
+        zone_roles = roles_for(zone)
+        recommended = max(1, int(zone.get("recommended_agents") or 1))
+        support = supporting_reads_for_zone(zone, records)
+        for index, role in enumerate(zone_roles):
+            tasks.append({"id": f"TASK-{number:03d}", "role": role, "zone": zone["id"], "objective": "Find optimization opportunities with evidence only; do not edit source files.", "allowed_reads": list(zone.get("globs") or []), "supporting_reads": support, "allowed_writes": [f"{HERE.name}/state/findings.jsonl"], "required_outputs": ["findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code"], "recommended_agent_slot": (index % recommended) + 1, "max_context_files": min(int(zone.get("files") or 0) + len(support), 240), "max_context_tokens": 120000, "status": "open"})
             number += 1
     write_jsonl(state("agent-tasks.jsonl"), tasks)
     write_reports()
@@ -672,8 +932,21 @@ def validate_finding(finding: dict[str, Any], validations: list[dict[str, Any]] 
     metrics = finding.get("metrics")
     if not isinstance(metrics, dict):
         errors.append(f"finding {fid} metrics must be an object")
-    if status in {"approved", "implemented", "validated"} and not non_empty(finding.get("evidence")):
-        errors.append(f"finding {fid} cannot be {status} without evidence")
+    else:
+        metrics_policy = load_metrics_policy()
+        required_metrics = list(metrics_policy.keys()) or METRICS
+        for key in required_metrics:
+            if key not in metrics:
+                errors.append(f"finding {fid} metrics missing key: {key}")
+            else:
+                errors.extend(metric_value_errors(key, metrics[key], metrics_policy, f"finding {fid}"))
+    if status in {"candidate", "approved", "implemented", "validated"}:
+        if not non_empty(finding.get("claim")):
+            errors.append(f"finding {fid} must include a concrete claim")
+        if not non_empty(finding.get("evidence")):
+            errors.append(f"finding {fid} cannot be {status} without evidence")
+        if not non_empty(finding.get("counterevidence")):
+            errors.append(f"finding {fid} must record counterevidence, uncertainty, or gaps")
     if status == "validated" and validations is not None:
         if not any(fid in item.get("related_findings", []) or item.get("finding") == fid for item in validations):
             errors.append(f"validated finding {fid} has no validation record")
@@ -836,18 +1109,18 @@ def validate_packet(packet: dict[str, Any], validations: list[dict[str, Any]]) -
         errors.append(f"packet {pid} risk_score must be integer 1-5 or null")
     if isinstance(risk, int) and not 1 <= risk <= 5:
         errors.append(f"packet {pid} risk_score must be between 1 and 5")
-    if status == "approved" and not packet.get("allowed_files"):
-        errors.append(f"approved packet {pid} has no allowed_files")
-    if status == "approved":
+    if status in IMPLEMENTATION_PACKET_STATUSES and not packet.get("allowed_files"):
+        errors.append(f"{status} packet {pid} has no allowed_files")
+    if status in IMPLEMENTATION_PACKET_STATUSES:
         parity = packet.get("behavioral_parity_requirements")
         if not isinstance(parity, dict):
-            errors.append(f"approved packet {pid} must state behavioral parity requirements")
+            errors.append(f"{status} packet {pid} must state behavioral parity requirements")
         else:
             for key in ["inputs_compatible", "outputs_compatible", "error_behavior_compatible", "known_acceptable_differences"]:
                 if key not in parity or not non_empty(parity.get(key)):
-                    errors.append(f"approved packet {pid} must state parity field: {key}")
+                    errors.append(f"{status} packet {pid} must state parity field: {key}")
         if not non_empty(packet.get("validation_commands")):
-            errors.append(f"approved packet {pid} must include validation commands or manual checks")
+            errors.append(f"{status} packet {pid} must include validation commands or manual checks")
     if isinstance(risk, int) and risk >= 3 and status in {"in-progress", "implemented", "validated"} and not packet.get("related_findings"):
         errors.append(f"risk {risk} packet {pid} must be traceable to a finding")
     if risk == 4 and status in {"approved", "in-progress", "implemented", "validated"} and not non_empty(packet.get("human_approval")):
@@ -864,13 +1137,13 @@ def overlap_errors(packets: list[dict[str, Any]]) -> list[str]:
     conflict_ok = {norm(path) for packet in packets if non_empty(packet.get("conflict_approval")) for path in packet.get("allowed_files") or []}
     errors = []
     for packet in packets:
-        if packet.get("status") != "approved":
+        if packet.get("status") not in ACTIVE_PACKET_STATUSES:
             continue
         pid = str(packet.get("id"))
         for raw in packet.get("allowed_files") or []:
             path = norm(raw)
             if path in owners and path not in conflict_ok:
-                errors.append(f"approved packets {owners[path]} and {pid} both touch {path} without conflict approval")
+                errors.append(f"active packets {owners[path]} and {pid} both touch {path} without conflict approval")
             owners[path] = pid
     return errors
 
@@ -938,6 +1211,8 @@ def enforce_scope(packets: list[dict[str, Any]]) -> list[str]:
     docs = {norm(path) for packet in active for path in packet.get("docs_files") or []}
     durable = {norm(path) for packet in active for path in packet.get("durable_knowledge_decisions") or []}
     for path in changed:
+        if managed_gitignore_only_change(path):
+            continue
         if is_dependency(path):
             if path not in deps:
                 errors.append(f"changed dependency file is not listed in packet dependency_files: {path}")
@@ -954,7 +1229,7 @@ def enforce_scope(packets: list[dict[str, Any]]) -> list[str]:
 
 def validate(args: argparse.Namespace) -> int:
     ensure_runtime()
-    errors = validate_schemas() + validate_json_state()
+    errors = validate_schemas() + validate_json_state() + validate_state_schemas() + validate_policy_drift()
     findings, finding_errors = read_jsonl(state("findings.jsonl"))
     validations, validation_errors = read_jsonl(state("validations.jsonl"))
     packets, packet_validations, packet_errors = load_packets()
@@ -988,9 +1263,17 @@ def write_reports() -> None:
     tests = load_json(state("tests.json"), {"commands": []})
     summary = census_doc.get("summary", {}) if isinstance(census_doc, dict) else {}
     (REPORTS / "status.md").write_text("\n".join(["# Status", "", f"Files indexed: {summary.get('total_files', 0)}", f"LOC indexed: {summary.get('total_loc', 0)}", f"Zones: {len(zones)}", f"Agent tasks: {len(tasks)}", f"Findings: {len(findings)}", f"Packets: {len(packets)}", "", "This report is generated from JSON state. Do not edit it as source of truth."]) + "\n", encoding="utf-8", newline="\n")
-    lines = ["# Agent Plan", "", f"Recommended discovery agents: {len(tasks)}", ""]
+    recommended_agents = sum(max(1, int(zone.get("recommended_agents") or 1)) for zone in zones)
+    lines = ["# Agent Plan", "", f"Recommended discovery agents: {recommended_agents}", f"Role-specific discovery tasks: {len(tasks)}", ""]
     for index, task in enumerate(tasks, 1):
-        lines += [f"Agent {index}: {task.get('role')} on {task.get('zone')}", f"- Files/globs: {', '.join('`' + item + '`' for item in task.get('allowed_reads', []))}", f"- Expected output: {', '.join(task.get('required_outputs', []))}", ""]
+        support = task.get("supporting_reads", [])
+        lines += [
+            f"Task {index}: {task.get('role')} on {task.get('zone')} (agent slot {task.get('recommended_agent_slot')})",
+            f"- Files/globs: {', '.join('`' + item + '`' for item in task.get('allowed_reads', []))}",
+            f"- Supporting reads: {', '.join('`' + item + '`' for item in support[:12]) if support else 'None'}",
+            f"- Expected output: {', '.join(task.get('required_outputs', []))}",
+            "",
+        ]
     high_risk = [zone for zone in zones if zone.get("risk_notes")]
     lines += ["## High-risk zones", md_list([f"{zone.get('id')} ({', '.join(zone.get('risk_notes', []))})" for zone in high_risk]), "", "## Large files"]
     lines.append(md_list([f"{item.get('path')} ({item.get('loc')} LOC)" for item in (census_doc.get("largest_files", []) if isinstance(census_doc, dict) else [])[:10]]))
@@ -1051,13 +1334,7 @@ def contracts_scan(_: argparse.Namespace) -> int:
     records, _ = read_jsonl(state("file-tree.jsonl"))
     if not records:
         records, _ = collect_files()
-    contracts = []
-    for record in records:
-        path = record["path"]
-        path_parts = parts(path)
-        name = PurePosixPath(path).name.lower()
-        if path in {"README.md", "AGENTS.md"} or (path_parts and path_parts[0] in {"docs", "proto", "schema", "schemas"}) or name in {"openapi.yaml", "openapi.json"}:
-            contracts.append({"path": path, "kind": "authority-or-contract-candidate", "notes": []})
+    contracts = contract_candidates_from_records(records)
     save_json(state("contracts.json"), {"contracts": contracts})
     print(f"OK    wrote {len(contracts)} contract candidates")
     return 0
