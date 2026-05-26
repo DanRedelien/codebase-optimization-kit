@@ -29,14 +29,23 @@
     "evidence": {
       "type": "array"
     },
+    "evidence_fields": {
+      "type": "object"
+    },
     "id": {
       "type": "string"
     },
     "metrics": {
       "type": "object"
     },
+    "primary_lane": {
+      "type": "string"
+    },
     "recommendation": {
       "type": "string"
+    },
+    "related_lanes": {
+      "type": "array"
     },
     "status": {
       "enum": [

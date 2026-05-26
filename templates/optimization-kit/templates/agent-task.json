@@ -2,6 +2,20 @@
   "allowed_reads": [
     "src/core/**"
   ],
+  "audit_queue": [
+    {
+      "baseline_first": true,
+      "lanes": [
+        "security-risk",
+        "authority-drift",
+        "dynamic-usage",
+        "test-reliability",
+        "dead-code",
+        "structural-quality"
+      ],
+      "zone": "Z-core"
+    }
+  ],
   "required_reads": [
     "AGENTS.md",
     "README.md",

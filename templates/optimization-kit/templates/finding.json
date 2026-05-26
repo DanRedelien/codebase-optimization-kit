@@ -3,7 +3,9 @@
   "category": "dead-code",
   "claim": "src/example.py has no confirmed runtime path.",
   "contracts_touched": [],
-  "counterevidence": [],
+  "counterevidence": [
+    "Dynamic imports, config references, and external contracts have not been ruled out."
+  ],
   "created_at": "YYYY-MM-DD",
   "created_by": "agent-id",
   "dead_code": {
@@ -18,6 +20,10 @@
       "test_or_runtime_check": null
     }
   },
+  "evidence_fields": {
+    "reachability_summary": "Only static references checked so far; dynamic usage remains unknown.",
+    "root_cause": "No confirmed runtime path for the legacy parser."
+  },
   "evidence": [],
   "id": "DEAD-001",
   "metrics": {
@@ -28,9 +34,17 @@
     "duplicate_logic_reduction": null,
     "passing_tests": null,
     "reversibility": null,
-    "risk_score": null
+    "risk_score": {
+      "approval_path": "Needs packet approval before implementation.",
+      "risk_level": 2,
+      "risk_reason": "Dead-code removal is local only after required evidence gates are complete."
+    }
   },
+  "primary_lane": "dead-code",
   "recommendation": "needs-evidence",
+  "related_lanes": [
+    "dynamic-usage"
+  ],
   "status": "needs-evidence",
   "tests_covering": [],
   "title": "Unused legacy parser appears unreachable",

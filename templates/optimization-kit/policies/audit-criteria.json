@@ -1,0 +1,174 @@
+{
+  "baseline_caps": {
+    "duplicate_top_files_per_zone": 20,
+    "duplicate_top_files_project": 200,
+    "hard_time_budget_seconds": 120,
+    "max_bytes_per_text_file": 262144,
+    "max_content_sampled_files": 20000,
+    "soft_time_budget_seconds": 60,
+    "structural_top_files_per_zone": 50,
+    "total_content_read_bytes": 67108864
+  },
+  "dedupe": {
+    "key_fields": [
+      "normalized_affected_files",
+      "normalized_root_cause",
+      "primary_lane"
+    ],
+    "related_lane_policy": "Use one finding per root cause. Put overlapping concerns in related_lanes."
+  },
+  "lane_priority": [
+    "security-risk",
+    "dependency-risk",
+    "authority-drift",
+    "dynamic-usage",
+    "test-reliability",
+    "type-contract-safety",
+    "dead-code",
+    "duplicate-logic",
+    "structural-quality"
+  ],
+  "lanes": {
+    "authority-drift": {
+      "default_risk_floor": 4,
+      "finding_category": "authority-drift",
+      "implementation_policy": "human-approval",
+      "required_evidence": [
+        "root_cause",
+        "authorities_compared",
+        "contradiction",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Compare existing docs, tests, schemas, and public contracts only."
+      ]
+    },
+    "dead-code": {
+      "default_risk_floor": 2,
+      "finding_category": "dead-code",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "reachability_summary",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Use existing references, entrypoints, configs, tests, and runtime evidence gates."
+      ]
+    },
+    "dependency-risk": {
+      "default_risk_floor": 4,
+      "finding_category": "dependency-risk",
+      "implementation_policy": "human-approval",
+      "required_evidence": [
+        "root_cause",
+        "dependency_files_checked",
+        "usage_or_lockfile_evidence",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Use existing lockfiles and existing package-manager output only."
+      ]
+    },
+    "duplicate-logic": {
+      "default_risk_floor": 2,
+      "finding_category": "duplicate-logic",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "duplicate_locations",
+        "equivalence_reason",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Use bounded normalized-block or repeated-shape evidence; no new clone scanner required."
+      ]
+    },
+    "dynamic-usage": {
+      "default_risk_floor": 4,
+      "finding_category": "dynamic-usage",
+      "implementation_policy": "human-approval",
+      "required_evidence": [
+        "root_cause",
+        "dynamic_mechanism",
+        "entrypoints_or_configs",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Check existing reflection, registry, config, plugin, eval, and exec paths."
+      ]
+    },
+    "security-risk": {
+      "default_risk_floor": 5,
+      "finding_category": "security-risk",
+      "implementation_policy": "blocked-direct",
+      "required_evidence": [
+        "root_cause",
+        "threat_or_secret",
+        "exposure_path",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Use existing project evidence only; do not install scanners."
+      ]
+    },
+    "structural-quality": {
+      "default_risk_floor": 2,
+      "finding_category": "structural-quality",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "objective_signals",
+        "impact",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Start with LOC, rough branch counts, ownership concentration, and coupling signals."
+      ]
+    },
+    "test-reliability": {
+      "default_risk_floor": 3,
+      "finding_category": "test-reliability",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "test_gap",
+        "affected_behavior",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Use existing test commands and observed flaky or missing coverage evidence."
+      ]
+    },
+    "type-contract-safety": {
+      "default_risk_floor": 4,
+      "finding_category": "type-contract-safety",
+      "implementation_policy": "human-approval",
+      "required_evidence": [
+        "root_cause",
+        "boundary_or_contract",
+        "unchecked_assumption",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Check existing schemas, public interfaces, casts, and runtime data assumptions."
+      ]
+    }
+  },
+  "policy_order": [
+    "discovery-only",
+    "packet-ok",
+    "human-approval",
+    "blocked-direct"
+  ],
+  "schema_version": "1.0"
+}

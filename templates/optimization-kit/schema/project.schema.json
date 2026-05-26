@@ -5,6 +5,9 @@
     "created_at": {
       "type": "string"
     },
+    "custom_finding_categories": {
+      "type": "array"
+    },
     "kit_version": {
       "type": "string"
     },

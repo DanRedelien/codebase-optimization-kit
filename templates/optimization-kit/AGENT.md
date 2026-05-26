@@ -16,10 +16,12 @@ python .codebase-optimization-kit/kit.py agents plan
 
 5. Do not modify project source during discovery.
 6. Write discovery findings only through structured JSON/JSONL records.
-7. After `agents plan`, ask the human/orchestrator how many discovery agents to spawn.
+7. Read `policies/audit-criteria.json`; use `audit_queue` lanes in priority order before proposing optimization work.
 8. Implementation requires one approved packet.
 9. Implementation agents may edit only files listed in the approved packet.
 10. Run `python .codebase-optimization-kit/kit.py validate --enforce-packet` before claiming completion.
+
+Record contradictions between docs, tests, schemas, contracts, and observed behavior as `authority-drift` findings. Treat broad "AI slop" concerns as objective `structural-quality`, `duplicate-logic`, `test-reliability`, or `dynamic-usage` evidence instead.
 
 Before approving dead-code or behavior-sensitive packets, read `policies/PROJECT_DEAD_CODE_POLICY.md` and `policies/PROJECT_PARITY_POLICY.md` if they contain project-specific additions.
 

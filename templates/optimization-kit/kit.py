@@ -60,6 +60,41 @@ ROLES = [
     "domain-risk-auditor",
     "todo-assumption-auditor",
 ]
+AUDIT_LANE_PRIORITY = [
+    "security-risk",
+    "dependency-risk",
+    "authority-drift",
+    "dynamic-usage",
+    "test-reliability",
+    "type-contract-safety",
+    "dead-code",
+    "duplicate-logic",
+    "structural-quality",
+]
+AUDIT_LANES = set(AUDIT_LANE_PRIORITY)
+AUDIT_POLICY_ORDER = ["discovery-only", "packet-ok", "human-approval", "blocked-direct"]
+ROLE_TO_AUDIT_LANES = {
+    "architecture-auditor": ["structural-quality", "type-contract-safety"],
+    "dead-code-auditor": ["dead-code", "dynamic-usage"],
+    "dependency-auditor": ["dependency-risk"],
+    "duplicate-logic-auditor": ["duplicate-logic"],
+    "test-coverage-auditor": ["test-reliability"],
+    "performance-auditor": ["structural-quality"],
+    "integration-auditor": ["dynamic-usage", "authority-drift"],
+    "domain-risk-auditor": ["security-risk", "authority-drift"],
+    "todo-assumption-auditor": ["authority-drift", "structural-quality"],
+}
+AUDIT_LANE_TO_ROLE = {
+    "security-risk": "domain-risk-auditor",
+    "dependency-risk": "dependency-auditor",
+    "authority-drift": "integration-auditor",
+    "dynamic-usage": "integration-auditor",
+    "test-reliability": "test-coverage-auditor",
+    "type-contract-safety": "architecture-auditor",
+    "dead-code": "dead-code-auditor",
+    "duplicate-logic": "duplicate-logic-auditor",
+    "structural-quality": "architecture-auditor",
+}
 DEAD_CODE_CLASSES = {
     "truly_unreachable",
     "unused_internal_export",
@@ -319,6 +354,7 @@ def ensure_runtime() -> None:
     if project.get("created_at") == "YYYY-MM-DD":
         project["created_at"] = today()
     project.setdefault("source_of_truth", {"root_agents": "AGENTS.md", "project_readme": "README.md", "project_docs": []})
+    project.setdefault("custom_finding_categories", [])
     save_json(state("project.json"), project)
 
 
@@ -335,6 +371,213 @@ def non_empty(value: Any) -> bool:
 def load_metrics_policy() -> dict[str, Any]:
     value = load_json(POLICIES / "metrics-policy.json", {})
     return value if isinstance(value, dict) else {}
+
+
+def load_audit_policy() -> dict[str, Any]:
+    value = load_json(POLICIES / "audit-criteria.json", {})
+    return value if isinstance(value, dict) else {}
+
+
+def audit_lanes(policy: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    policy = policy if policy is not None else load_audit_policy()
+    lanes = policy.get("lanes", {}) if isinstance(policy, dict) else {}
+    return {str(key): value for key, value in lanes.items() if isinstance(value, dict)}
+
+
+def custom_finding_categories() -> set[str]:
+    project = load_json(state("project.json"), {})
+    if not isinstance(project, dict):
+        return set()
+    raw = project.get("custom_finding_categories", [])
+    if not isinstance(raw, list):
+        return set()
+    return {str(item) for item in raw if isinstance(item, str) and item.strip()}
+
+
+def known_finding_categories() -> set[str]:
+    return {str(item.get("finding_category")) for item in audit_lanes().values() if isinstance(item.get("finding_category"), str)} | custom_finding_categories()
+
+
+def audit_policy_rank(policy_name: str) -> int:
+    try:
+        return AUDIT_POLICY_ORDER.index(policy_name)
+    except ValueError:
+        return -1
+
+
+def most_restrictive_policy(lanes: list[str]) -> str:
+    policy = "discovery-only"
+    configs = audit_lanes()
+    for lane in lanes:
+        candidate = str(configs.get(lane, {}).get("implementation_policy", "discovery-only"))
+        if audit_policy_rank(candidate) > audit_policy_rank(policy):
+            policy = candidate
+    return policy
+
+
+def risk_floor_for_lanes(lanes: list[str]) -> int:
+    configs = audit_lanes()
+    floor = 1
+    for lane in lanes:
+        config = configs.get(lane, {})
+        raw = config.get("default_risk_floor", 1)
+        if isinstance(raw, int):
+            floor = max(floor, raw)
+        policy = config.get("implementation_policy")
+        if policy == "human-approval":
+            floor = max(floor, 4)
+        elif policy == "blocked-direct":
+            floor = max(floor, 5)
+    return floor
+
+
+def metric_risk_level(metrics: Any) -> int | None:
+    if not isinstance(metrics, dict):
+        return None
+    risk = metrics.get("risk_score")
+    if isinstance(risk, dict):
+        raw = risk.get("risk_level")
+        return raw if isinstance(raw, int) else None
+    return risk if isinstance(risk, int) else None
+
+
+def finding_audit_lanes(finding: dict[str, Any]) -> tuple[str | None, list[str], list[str]]:
+    errors: list[str] = []
+    category = finding.get("category")
+    lanes = audit_lanes()
+    primary = finding.get("primary_lane")
+    if primary is None and isinstance(finding.get("audit"), dict):
+        primary = finding["audit"].get("primary_lane")
+    if primary is None and isinstance(category, str) and category in lanes:
+        primary = category
+    if primary is not None and primary not in lanes:
+        errors.append(f"finding {finding.get('id', '<unknown>')} has unknown primary_lane: {primary}")
+
+    related = finding.get("related_lanes")
+    if related is None and isinstance(finding.get("audit"), dict):
+        related = finding["audit"].get("related_lanes")
+    if related is None:
+        related = []
+    if not isinstance(related, list):
+        errors.append(f"finding {finding.get('id', '<unknown>')} related_lanes must be a list")
+        related_lanes: list[str] = []
+    else:
+        related_lanes = [str(item) for item in related]
+        for lane in related_lanes:
+            if lane not in lanes:
+                errors.append(f"finding {finding.get('id', '<unknown>')} has unknown related lane: {lane}")
+    if primary is not None:
+        related_lanes = [lane for lane in related_lanes if lane != primary]
+    return str(primary) if primary is not None else None, related_lanes, errors
+
+
+def evidence_container(finding: dict[str, Any]) -> dict[str, Any]:
+    containers: list[dict[str, Any]] = []
+    for key in ["evidence_fields", "category_evidence"]:
+        value = finding.get(key)
+        if isinstance(value, dict):
+            containers.append(value)
+    audit = finding.get("audit")
+    if isinstance(audit, dict):
+        for key in ["evidence_fields", "category_evidence", "evidence"]:
+            value = audit.get(key)
+            if isinstance(value, dict):
+                containers.append(value)
+        containers.append(audit)
+    merged: dict[str, Any] = {}
+    for container in containers:
+        merged.update(container)
+    return merged
+
+
+def audit_evidence_value(finding: dict[str, Any], key: str) -> Any:
+    if key == "affected_files":
+        return finding.get("affected_files")
+    if key == "counterevidence_or_gap":
+        audit = finding.get("audit") if isinstance(finding.get("audit"), dict) else {}
+        fields = evidence_container(finding)
+        return finding.get("counterevidence") or fields.get("evidence_gap") or fields.get("counterevidence_or_gap") or audit.get("evidence_gap")
+    if key in finding:
+        return finding.get(key)
+    fields = evidence_container(finding)
+    if key in fields:
+        return fields.get(key)
+    if key in DEAD_CODE_CHECKS:
+        dead = finding.get("dead_code")
+        checks = dead.get("required_checks") if isinstance(dead, dict) else None
+        if isinstance(checks, dict):
+            return checks.get(key)
+    return None
+
+
+def audit_required_evidence_errors(finding: dict[str, Any], primary_lane: str | None) -> list[str]:
+    if primary_lane is None:
+        return []
+    lane = audit_lanes().get(primary_lane, {})
+    required = lane.get("required_evidence", [])
+    if not isinstance(required, list):
+        return [f"finding {finding.get('id', '<unknown>')} audit lane {primary_lane} required_evidence must be a list in policy"]
+    errors = []
+    for key in required:
+        if not isinstance(key, str):
+            continue
+        if not non_empty(audit_evidence_value(finding, key)):
+            errors.append(f"finding {finding.get('id', '<unknown>')} category {primary_lane} missing category-specific evidence field: {key}")
+    return errors
+
+
+def normalized_root_cause(finding: dict[str, Any]) -> str:
+    root = audit_evidence_value(finding, "root_cause") or finding.get("claim") or ""
+    return re.sub(r"\s+", " ", str(root)).strip().lower()
+
+
+def finding_dedupe_key(finding: dict[str, Any]) -> str:
+    primary, _, _ = finding_audit_lanes(finding)
+    paths = sorted(norm(path) for path in finding.get("affected_files") or [])
+    return json.dumps([paths, normalized_root_cause(finding), primary or finding.get("category")], sort_keys=True)
+
+
+def update_audit_process_metrics(extra: dict[str, Any] | None = None) -> None:
+    metrics_doc = load_json(state("metrics.json"), {"metrics": {}})
+    if not isinstance(metrics_doc, dict):
+        metrics_doc = {"metrics": {}}
+    metrics = metrics_doc.get("metrics")
+    if not isinstance(metrics, dict):
+        metrics = {}
+    findings, _ = read_jsonl(state("findings.jsonl"))
+    packets, _, _ = load_packets()
+    tasks, _ = read_jsonl(state("agent-tasks.jsonl"))
+    packet_findings = {str(fid) for packet in packets for fid in packet.get("related_findings", [])}
+    complete = 0
+    missing_evidence = 0
+    blockers = 0
+    critical_before_packets = 0
+    for finding in findings:
+        primary, related, lane_errors = finding_audit_lanes(finding)
+        risk = metric_risk_level(finding.get("metrics")) or risk_floor_for_lanes(([primary] if primary else []) + related)
+        evidence_errors = audit_required_evidence_errors(finding, primary)
+        if primary and not evidence_errors and not lane_errors:
+            complete += 1
+        if evidence_errors:
+            missing_evidence += 1
+        if primary in {"security-risk", "authority-drift"} and risk >= 4:
+            blockers += 1
+        if risk >= 4 and str(finding.get("id")) not in packet_findings:
+            critical_before_packets += 1
+    audit_process = {
+        "critical_risks_found_before_packets": critical_before_packets,
+        "packets_blocked_for_missing_evidence": missing_evidence,
+        "duplicate_findings_suppressed": sum(1 for finding in findings if finding.get("status") == "superseded"),
+        "audit_scan_truncated": bool((metrics.get("baseline_audit") or {}).get("truncated")) if isinstance(metrics.get("baseline_audit"), dict) else False,
+        "security_or_authority_blockers": blockers,
+        "findings_with_required_evidence_complete": complete,
+        "agent_tasks_count": len(tasks),
+    }
+    if extra:
+        audit_process.update(extra)
+    metrics["audit_process"] = audit_process
+    metrics_doc["metrics"] = metrics
+    save_json(state("metrics.json"), metrics_doc)
 
 
 def metric_value_errors(name: str, value: Any, policy: dict[str, Any], label: str) -> list[str]:
@@ -497,6 +740,28 @@ def validate_jsonl_with_schema(filename: str, schema_name: str) -> list[str]:
     return result
 
 
+def validate_agent_task(task: dict[str, Any]) -> list[str]:
+    tid = task.get("id", "<unknown>")
+    errors: list[str] = []
+    audit_queue = task.get("audit_queue")
+    if audit_queue is None:
+        return errors
+    if not isinstance(audit_queue, list):
+        return [f"agent task {tid} audit_queue must be a list"]
+    for index, item in enumerate(audit_queue):
+        if not isinstance(item, dict):
+            errors.append(f"agent task {tid} audit_queue[{index}] must be an object")
+            continue
+        lanes = item.get("lanes")
+        if not isinstance(lanes, list):
+            errors.append(f"agent task {tid} audit_queue[{index}].lanes must be a list")
+            continue
+        for lane in lanes:
+            if lane not in AUDIT_LANES:
+                errors.append(f"agent task {tid} audit_queue[{index}] has unknown lane: {lane}")
+    return errors
+
+
 def validate_state_schemas() -> list[str]:
     errors: list[str] = []
     errors.extend(validate_json_file_with_schema("project.json", "project.schema.json"))
@@ -508,6 +773,10 @@ def validate_state_schemas() -> list[str]:
     errors.extend(validate_jsonl_with_schema("packets.jsonl", "packet.schema.json"))
     errors.extend(validate_jsonl_with_schema("validations.jsonl", "validation.schema.json"))
     errors.extend(validate_jsonl_with_schema("locks.jsonl", "lock.schema.json"))
+    tasks, task_errors = read_jsonl(state("agent-tasks.jsonl"))
+    errors.extend(task_errors)
+    for task in tasks:
+        errors.extend(validate_agent_task(task))
     return errors
 
 
@@ -524,6 +793,23 @@ def validate_policy_drift() -> list[str]:
     metrics_policy = load_json(POLICIES / "metrics-policy.json", {})
     if isinstance(metrics_policy, dict) and set(metrics_policy.keys()) != set(METRICS):
         errors.append("policies/metrics-policy.json keys drift from kit.py metrics")
+    audit_policy = load_audit_policy()
+    lanes = audit_lanes(audit_policy)
+    if set(lanes.keys()) != AUDIT_LANES:
+        errors.append("policies/audit-criteria.json lanes drift from kit.py")
+    if audit_policy.get("lane_priority") != AUDIT_LANE_PRIORITY:
+        errors.append("policies/audit-criteria.json lane_priority drifts from kit.py")
+    if audit_policy.get("policy_order") != AUDIT_POLICY_ORDER:
+        errors.append("policies/audit-criteria.json policy_order drifts from kit.py")
+    for lane, config in lanes.items():
+        category = config.get("finding_category")
+        if category != lane:
+            errors.append(f"policies/audit-criteria.json lane {lane} finding_category must match lane")
+        if config.get("implementation_policy") not in AUDIT_POLICY_ORDER:
+            errors.append(f"policies/audit-criteria.json lane {lane} has unknown implementation_policy")
+        floor = config.get("default_risk_floor")
+        if not isinstance(floor, int) or not 1 <= floor <= 5:
+            errors.append(f"policies/audit-criteria.json lane {lane} default_risk_floor must be 1-5")
     finding_schema, schema_errors = load_schema("finding.schema.json")
     errors.extend(schema_errors)
     if finding_schema:
@@ -651,15 +937,18 @@ def is_vendor(path: str) -> bool:
     return bool({part.lower() for part in parts(path)} & VENDOR_DIRS)
 
 
-def loc_for(path: Path) -> tuple[int, bool]:
+def loc_for(path: Path, max_bytes: int) -> tuple[int, bool, bool, int]:
     try:
-        data = path.read_bytes()
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes)
     except OSError:
-        return 0, False
+        return 0, False, False, 0
     if b"\0" in data[:4096]:
-        return 0, False
+        return 0, False, False, len(data)
     text = data.decode("utf-8", errors="ignore")
-    return len(text.splitlines()), True
+    truncated = size > len(data)
+    return len(text.splitlines()), True, truncated, len(data)
 
 
 def skip_dir(path: Path) -> bool:
@@ -688,9 +977,88 @@ def tool_info(paths: list[str]) -> dict[str, Any]:
     return {"available_tools": available, "commands": commands}
 
 
+def audit_baseline_caps() -> dict[str, int]:
+    policy = load_audit_policy()
+    caps = policy.get("baseline_caps", {}) if isinstance(policy, dict) else {}
+    defaults = {
+        "max_bytes_per_text_file": 262144,
+        "total_content_read_bytes": 67108864,
+        "max_content_sampled_files": 20000,
+        "structural_top_files_per_zone": 50,
+        "duplicate_top_files_project": 200,
+        "duplicate_top_files_per_zone": 20,
+        "soft_time_budget_seconds": 60,
+        "hard_time_budget_seconds": 120,
+    }
+    for key, value in list(defaults.items()):
+        raw = caps.get(key)
+        if isinstance(raw, int) and raw > 0:
+            defaults[key] = raw
+    return defaults
+
+
+def baseline_audit(records: list[dict[str, Any]], skipped: list[str], tools: dict[str, Any]) -> dict[str, Any]:
+    caps = audit_baseline_caps()
+    source = [record for record in records if "source" in (record.get("signals") or []) and not record.get("is_vendor") and not record.get("is_generated")]
+    tests = [record for record in records if record.get("is_test")]
+    manifests = [record["path"] for record in records if PurePosixPath(str(record.get("path", ""))).name in PACKAGE_MANIFESTS]
+    locks = [record["path"] for record in records if PurePosixPath(str(record.get("path", ""))).name in LOCKFILES]
+    configs = [record["path"] for record in records if PurePosixPath(str(record.get("path", ""))).name in CONFIG_NAMES or str(record.get("path", "")).startswith(".github/")]
+    entrypoints = [record["path"] for record in records if PurePosixPath(str(record.get("path", ""))).name.lower() in {"main.py", "app.py", "index.js", "index.ts", "main.go", "main.rs", "server.js", "server.ts"}]
+    large_files = sorted(source, key=lambda item: int(item.get("loc") or 0), reverse=True)[: caps["structural_top_files_per_zone"]]
+    sampled = sum(1 for record in source if record.get("content_sampled"))
+    truncated = len(source) > caps["max_content_sampled_files"] or any(record.get("content_truncated") for record in records)
+    evidence_gaps: list[str] = []
+    if truncated:
+        evidence_gaps.append("baseline content sampling hit file, byte, or per-file caps")
+    if skipped:
+        evidence_gaps.append("vendor/generated/cache folders skipped by default")
+    manifest_names = {PurePosixPath(path).name for path in manifests}
+    lock_names = {PurePosixPath(path).name for path in locks}
+    dependency_signal = "manifest-and-lockfile-present" if manifests and locks else "manifest-without-lockfile" if manifests else "no-package-manifest-detected"
+    if "package.json" in manifest_names and not ({"package-lock.json", "pnpm-lock.yaml", "yarn.lock"} & lock_names):
+        dependency_signal = "node-manifest-without-lockfile"
+    health_signals = {
+        "structural-quality": {
+            "large_source_files_sample": [{"path": item["path"], "loc": item["loc"]} for item in large_files[:10]],
+            "source_files": len(source),
+        },
+        "test-reliability": {
+            "test_files": len(tests),
+            "detected_test_commands": len((tools.get("commands") if isinstance(tools, dict) else []) or []),
+            "signal": "tests-detected" if tests else "no-test-files-detected",
+        },
+        "authority-drift": {
+            "authority_candidates": authority_doc_candidates(records),
+            "signal": "authority-inputs-present" if authority_doc_candidates(records) else "no-authority-docs-detected",
+        },
+        "dynamic-usage": {
+            "entrypoints": entrypoints[:25],
+            "config_files": configs[:25],
+        },
+        "dependency-risk": {
+            "manifests": manifests[:25],
+            "lockfiles": locks[:25],
+            "signal": dependency_signal,
+        },
+    }
+    return {
+        "generated_by": "kit.py census",
+        "caps": caps,
+        "truncated": truncated,
+        "evidence_gap": evidence_gaps,
+        "sampled_source_files": sampled,
+        "lane_priority": AUDIT_LANE_PRIORITY,
+        "health_signals": health_signals,
+    }
+
+
 def collect_files() -> tuple[list[dict[str, Any]], list[str]]:
     records: list[dict[str, Any]] = []
     skipped: list[str] = []
+    caps = audit_baseline_caps()
+    content_budget = caps["total_content_read_bytes"]
+    sampled_files = 0
     for root, dirs, files in os.walk(PROJECT_ROOT):
         root_path = Path(root)
         kept = []
@@ -708,7 +1076,12 @@ def collect_files() -> tuple[list[dict[str, Any]], list[str]]:
             relative = rel(path)
             if relative == HERE.name or relative.startswith(HERE.name + "/"):
                 continue
-            loc, text = loc_for(path)
+            can_sample = sampled_files < caps["max_content_sampled_files"] and content_budget > 0
+            read_limit = min(caps["max_bytes_per_text_file"], content_budget) if can_sample else 0
+            loc, text, content_truncated, bytes_read = loc_for(path, read_limit) if read_limit > 0 else (0, False, True, 0)
+            if text:
+                sampled_files += 1
+                content_budget = max(0, content_budget - bytes_read)
             signals: list[str] = []
             language = LANGUAGE_BY_EXTENSION.get(path.suffix.lower(), "unknown")
             name = PurePosixPath(relative).name
@@ -724,7 +1097,9 @@ def collect_files() -> tuple[list[dict[str, Any]], list[str]]:
                 signals.append("generated")
             if is_vendor(relative):
                 signals.append("vendor")
-            records.append({"path": relative, "language": language, "bytes": path.stat().st_size, "loc": loc if text else 0, "is_test": is_test(relative), "is_generated": is_generated(relative), "is_vendor": is_vendor(relative), "zone": None, "signals": sorted(set(signals))})
+            if content_truncated:
+                signals.append("content-truncated")
+            records.append({"path": relative, "language": language, "bytes": path.stat().st_size, "loc": loc if text else 0, "content_sampled": bool(text), "content_truncated": bool(content_truncated), "is_test": is_test(relative), "is_generated": is_generated(relative), "is_vendor": is_vendor(relative), "zone": None, "signals": sorted(set(signals))})
     return sorted(records, key=lambda item: item["path"]), sorted(set(skipped))
 
 
@@ -747,6 +1122,7 @@ def census(_: argparse.Namespace) -> int:
     entrypoints = [path for path in paths if PurePosixPath(path).name.lower() in {"main.py", "app.py", "index.js", "index.ts", "main.go", "main.rs", "server.js", "server.ts"}]
     tools = tool_info(paths)
     contract_candidates = contract_candidates_from_records(records)
+    audit_baseline = baseline_audit(records, skipped, tools)
     largest = sorted(records, key=lambda item: (int(item["loc"]), int(item["bytes"])), reverse=True)[:25]
     doc = {
         "kit_version": KIT_VERSION,
@@ -764,11 +1140,13 @@ def census(_: argparse.Namespace) -> int:
         "entrypoint_candidates": entrypoints,
         "contract_candidates": contract_candidates,
         "detected_tools": tools,
+        "baseline_audit": audit_baseline,
     }
     save_json(state("census.json"), doc)
     save_json(state("contracts.json"), {"contracts": contract_candidates})
     save_json(state("tests.json"), {"test_files": tests, "commands": tools["commands"]})
-    save_json(state("metrics.json"), {"metrics": {"census": doc["summary"], "language_mix": doc["language_mix"]}})
+    save_json(state("metrics.json"), {"metrics": {"census": doc["summary"], "language_mix": doc["language_mix"], "baseline_audit": audit_baseline}})
+    update_audit_process_metrics()
     print(f"OK    wrote {len(records)} file records")
     return 0
 
@@ -906,24 +1284,55 @@ def context_reads_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) 
     return dedupe_limited(required, 24), dedupe_limited(optional, 32)
 
 
-def roles_for(zone: dict[str, Any]) -> list[str]:
+def lane_priority_key(lane: str) -> int:
+    try:
+        return AUDIT_LANE_PRIORITY.index(lane)
+    except ValueError:
+        return len(AUDIT_LANE_PRIORITY)
+
+
+def zone_records(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [record for record in records if record.get("zone") == zone.get("id")]
+
+
+def audit_lanes_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
     loc = int(zone.get("loc") or 0)
     files = int(zone.get("files") or 0)
     risk_notes = set(zone.get("risk_notes") or [])
-    roles = ["architecture-auditor", "dead-code-auditor", "test-coverage-auditor", "duplicate-logic-auditor", "integration-auditor"]
-    if "dependency-metadata" in set(zone.get("risk_notes") or []):
-        roles.append("dependency-auditor")
+    items = zone_records(zone, records)
+    names = {PurePosixPath(str(item.get("path", ""))).name for item in items}
+    has_source = any("source" in (item.get("signals") or []) for item in items)
+    has_config = any(name in CONFIG_NAMES or str(item.get("path", "")).startswith(".github/") for item in items for name in [PurePosixPath(str(item.get("path", ""))).name])
+    has_entrypoint = bool(zone.get("entrypoints"))
+    lanes = ["structural-quality", "test-reliability", "authority-drift"]
+    if has_source or has_config or has_entrypoint:
+        lanes.extend(["security-risk", "dynamic-usage"])
+    if "dependency-metadata" in risk_notes or any(name in PACKAGE_MANIFESTS or name in LOCKFILES for name in names):
+        lanes.append("dependency-risk")
     if loc >= 12000 or files >= 120 or "oversized-zone" in risk_notes:
-        roles.append("performance-auditor")
-    if risk_notes:
-        roles.append("domain-risk-auditor")
+        lanes.extend(["structural-quality", "duplicate-logic"])
     if loc >= 12000 or files >= 120:
-        roles.append("todo-assumption-auditor")
+        lanes.append("type-contract-safety")
     unique = []
-    for role in roles:
-        if role not in unique:
-            unique.append(role)
+    for lane in sorted(lanes, key=lane_priority_key):
+        if lane not in unique:
+            unique.append(lane)
     return unique
+
+
+def roles_for_lanes(lanes: list[str]) -> list[str]:
+    roles: list[str] = []
+    for lane in lanes:
+        role = AUDIT_LANE_TO_ROLE.get(lane, "architecture-auditor")
+        if role not in roles:
+            roles.append(role)
+    return roles
+
+
+def roles_for(zone: dict[str, Any], records: list[dict[str, Any]] | None = None) -> list[str]:
+    if records is None:
+        records, _ = read_jsonl(state("file-tree.jsonl"))
+    return roles_for_lanes(audit_lanes_for_zone(zone, records))
 
 
 def recommended_agent_total(zones: list[dict[str, Any]]) -> int:
@@ -969,15 +1378,20 @@ def agents_plan(_: argparse.Namespace) -> int:
         optional_reads: list[str] = []
         allowed_reads: list[str] = []
         role_queue: list[dict[str, Any]] = []
+        audit_queue: list[dict[str, Any]] = []
         for zone in assigned_zones:
             zone_required, zone_optional = context_reads_for_zone(zone, records)
+            lanes = audit_lanes_for_zone(zone, records)
+            roles = roles_for_lanes(lanes)
             required_reads.extend(zone_required)
             optional_reads.extend(zone_optional)
             allowed_reads.extend(zone.get("globs") or [])
-            role_queue.append({"zone": zone["id"], "roles": roles_for(zone)})
+            role_queue.append({"zone": zone["id"], "roles": roles})
+            audit_queue.append({"zone": zone["id"], "lanes": lanes, "baseline_first": True})
         primary_role = role_queue[0]["roles"][0] if role_queue else "architecture-auditor"
-        tasks.append({"id": f"TASK-{index:03d}", "role": primary_role, "zone": ",".join(zone["id"] for zone in assigned_zones), "zones": [zone["id"] for zone in assigned_zones], "objective": "Work the role_queue for assigned zones with evidence only; do not edit source files.", "allowed_reads": dedupe_limited(allowed_reads, 80), "required_reads": dedupe_limited(required_reads, 40), "optional_reads": dedupe_limited(optional_reads, 60), "role_queue": role_queue, "allowed_writes": [f"{HERE.name}/state/findings.jsonl"], "required_outputs": ["findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code"], "recommended_agent_slot": index, "max_context_files": min(sum(int(zone.get("files") or 0) for zone in assigned_zones) + 40, 240), "max_context_tokens": 120000, "status": "open"})
+        tasks.append({"id": f"TASK-{index:03d}", "role": primary_role, "zone": ",".join(zone["id"] for zone in assigned_zones), "zones": [zone["id"] for zone in assigned_zones], "objective": "Run baseline audit_queue lanes in priority order with evidence only; do not edit source files.", "allowed_reads": dedupe_limited(allowed_reads, 80), "required_reads": dedupe_limited(required_reads, 40), "optional_reads": dedupe_limited(optional_reads, 60), "role_queue": role_queue, "audit_queue": audit_queue, "allowed_writes": [f"{HERE.name}/state/findings.jsonl"], "required_outputs": ["baseline_health_signals", "findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code", "install_scanner"], "recommended_agent_slot": index, "max_context_files": min(sum(int(zone.get("files") or 0) for zone in assigned_zones) + 40, 240), "max_context_tokens": 120000, "status": "open"})
     write_jsonl(state("agent-tasks.jsonl"), tasks)
+    update_audit_process_metrics()
     write_reports()
     print(f"OK    wrote {len(tasks)} agent-slot tasks")
     return 0
@@ -997,9 +1411,20 @@ def validate_finding(finding: dict[str, Any], validations: list[dict[str, Any]] 
     status = finding.get("status")
     if status not in FINDING_STATUSES:
         errors.append(f"finding {fid} has unknown status: {status}")
+    category = finding.get("category")
+    if category not in known_finding_categories():
+        errors.append(f"finding {fid} has unknown category: {category}")
     for key in ["evidence", "counterevidence", "affected_files"]:
         if key in finding and not isinstance(finding[key], list):
             errors.append(f"finding {fid} {key} must be a list")
+    primary_lane, related_lanes, lane_errors = finding_audit_lanes(finding)
+    errors.extend(lane_errors)
+    if category in audit_lanes():
+        if primary_lane is None:
+            errors.append(f"finding {fid} category {category} requires primary_lane")
+        elif primary_lane != category:
+            errors.append(f"finding {fid} category {category} must match primary_lane {primary_lane}")
+    all_lanes = ([primary_lane] if primary_lane else []) + related_lanes
     metrics = finding.get("metrics")
     if not isinstance(metrics, dict):
         errors.append(f"finding {fid} metrics must be an object")
@@ -1011,6 +1436,19 @@ def validate_finding(finding: dict[str, Any], validations: list[dict[str, Any]] 
                 errors.append(f"finding {fid} metrics missing key: {key}")
             else:
                 errors.extend(metric_value_errors(key, metrics[key], metrics_policy, f"finding {fid}"))
+        if primary_lane:
+            risk_level = metric_risk_level(metrics)
+            floor = risk_floor_for_lanes(all_lanes)
+            if risk_level is None:
+                errors.append(f"finding {fid} category {primary_lane} requires metrics.risk_score.risk_level")
+            elif risk_level < floor:
+                errors.append(f"finding {fid} risk_score {risk_level} is below audit lane floor {floor}")
+    errors.extend(audit_required_evidence_errors(finding, primary_lane))
+    if primary_lane and status in {"approved", "implemented", "validated"}:
+        audit = finding.get("audit") if isinstance(finding.get("audit"), dict) else {}
+        evidence_mode = finding.get("evidence_mode") or audit.get("evidence_mode")
+        if evidence_mode == "heuristic":
+            errors.append(f"finding {fid} cannot be {status} with heuristic-only audit evidence")
     if status in {"candidate", "approved", "implemented", "validated"}:
         if not non_empty(finding.get("claim")):
             errors.append(f"finding {fid} must include a concrete claim")
@@ -1073,6 +1511,7 @@ def findings_validate(_: argparse.Namespace) -> int:
     for error in errors:
         print(f"ERROR {error}")
     print(f"DONE  findings={len(findings)} errors={len(errors)}")
+    update_audit_process_metrics()
     return 1 if errors else 0
 
 
@@ -1094,7 +1533,7 @@ def reconcile(_: argparse.Namespace) -> int:
     changed = 0
     by_key: dict[str, dict[str, Any]] = {}
     for finding in findings:
-        key = json.dumps([finding.get("category"), sorted(finding.get("affected_files") or []), finding.get("claim")], sort_keys=True)
+        key = finding_dedupe_key(finding)
         existing = by_key.get(key)
         if existing is None:
             by_key[key] = finding
@@ -1113,6 +1552,7 @@ def reconcile(_: argparse.Namespace) -> int:
     if changed:
         write_jsonl(state("findings.jsonl"), findings)
     append_jsonl(state("decisions.jsonl"), {"id": next_id(state("decisions.jsonl"), "DEC"), "type": "reconcile", "changed_records": changed, "created_at": now()})
+    update_audit_process_metrics({"duplicate_findings_suppressed": changed})
     print(f"OK    reconcile complete; changed_records={changed}")
     return 0
 
@@ -1129,6 +1569,12 @@ def packets_create(args: argparse.Namespace) -> int:
     metrics = finding.get("metrics") if isinstance(finding.get("metrics"), dict) else {}
     risk_metric = metrics.get("risk_score")
     risk_score = risk_metric.get("risk_level") if isinstance(risk_metric, dict) else risk_metric
+    primary_lane, related_lanes, _ = finding_audit_lanes(finding)
+    lane_floor = risk_floor_for_lanes(([primary_lane] if primary_lane else []) + related_lanes)
+    if not isinstance(risk_score, int):
+        risk_score = lane_floor
+    else:
+        risk_score = max(risk_score, lane_floor)
     packet = {
         "id": next_id(state("packets.jsonl"), "PKT"),
         "status": "draft",
@@ -1165,7 +1611,7 @@ def packet_has_result(packet_id: str, validations: list[dict[str, Any]]) -> bool
     return False
 
 
-def validate_packet(packet: dict[str, Any], validations: list[dict[str, Any]]) -> list[str]:
+def validate_packet(packet: dict[str, Any], validations: list[dict[str, Any]], findings: list[dict[str, Any]] | None = None) -> list[str]:
     pid = packet.get("id", "<unknown>")
     errors = []
     for key in ["id", "status", "related_findings", "objective", "allowed_files", "forbidden_files", "public_contracts", "behavioral_parity_requirements", "validation_commands", "rollback_plan", "risk_score", "human_approval"]:
@@ -1182,6 +1628,22 @@ def validate_packet(packet: dict[str, Any], validations: list[dict[str, Any]]) -
         errors.append(f"packet {pid} risk_score must be integer 1-5 or null")
     if isinstance(risk, int) and not 1 <= risk <= 5:
         errors.append(f"packet {pid} risk_score must be between 1 and 5")
+    min_risk = 1
+    if packet.get("dependency_files") or packet.get("public_contracts") or packet.get("generated_files"):
+        min_risk = max(min_risk, 4)
+    if findings:
+        by_id = {str(finding.get("id")): finding for finding in findings}
+        for fid in packet.get("related_findings") or []:
+            finding = by_id.get(str(fid))
+            if not finding:
+                continue
+            primary, related, _ = finding_audit_lanes(finding)
+            min_risk = max(min_risk, risk_floor_for_lanes(([primary] if primary else []) + related))
+    if min_risk > 1:
+        if risk is None:
+            errors.append(f"packet {pid} risk_score must be at least {min_risk} for related audit policy")
+        elif isinstance(risk, int) and risk < min_risk:
+            errors.append(f"packet {pid} risk_score {risk} is below required audit policy floor {min_risk}")
     if status in IMPLEMENTATION_PACKET_STATUSES and not packet.get("allowed_files"):
         errors.append(f"{status} packet {pid} has no allowed_files")
     if status in IMPLEMENTATION_PACKET_STATUSES:
@@ -1230,17 +1692,20 @@ def load_packets() -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str
 def packets_validate(_: argparse.Namespace) -> int:
     ensure_runtime()
     packets, validations, errors = load_packets()
+    findings, finding_errors = read_jsonl(state("findings.jsonl"))
+    errors.extend(finding_errors)
     seen = set()
     for packet in packets:
         pid = str(packet.get("id", ""))
         if pid in seen:
             errors.append(f"duplicate packet id: {pid}")
         seen.add(pid)
-        errors.extend(validate_packet(packet, validations))
+        errors.extend(validate_packet(packet, validations, findings))
     errors.extend(overlap_errors(packets))
     for error in errors:
         print(f"ERROR {error}")
     print(f"DONE  packets={len(packets)} errors={len(errors)}")
+    update_audit_process_metrics()
     return 1 if errors else 0
 
 
@@ -1310,7 +1775,7 @@ def validate(args: argparse.Namespace) -> int:
     for finding in findings:
         errors.extend(validate_finding(finding, validations))
     for packet in packets:
-        errors.extend(validate_packet(packet, packet_validations))
+        errors.extend(validate_packet(packet, packet_validations, findings))
     errors.extend(overlap_errors(packets))
     if args.enforce_packet:
         errors.extend(enforce_scope(packets))
@@ -1319,6 +1784,7 @@ def validate(args: argparse.Namespace) -> int:
     if not errors:
         print("OK    validation passed")
     print(f"DONE  errors={len(errors)} warnings=0")
+    update_audit_process_metrics()
     return 1 if errors else 0
 
 
@@ -1340,12 +1806,15 @@ def write_reports() -> None:
         required = task.get("required_reads", [])
         optional = task.get("optional_reads", [])
         role_queue = task.get("role_queue", [])
+        audit_queue = task.get("audit_queue", [])
         queue_summary = "; ".join(f"{item.get('zone')}: {', '.join(item.get('roles', []))}" for item in role_queue[:6])
+        audit_summary = "; ".join(f"{item.get('zone')}: {', '.join(item.get('lanes', []))}" for item in audit_queue[:6])
         lines += [
             f"Agent {index}: {task.get('role')} across {len(task.get('zones', []))} zone(s)",
             f"- Files/globs: {', '.join('`' + item + '`' for item in task.get('allowed_reads', []))}",
             f"- Required reads: {', '.join('`' + item + '`' for item in required[:12]) if required else 'None'}",
             f"- Optional reads: {', '.join('`' + item + '`' for item in optional[:12]) if optional else 'None'}",
+            f"- Audit queue: {audit_summary or 'None'}",
             f"- Role queue: {queue_summary or 'None'}",
             f"- Expected output: {', '.join(task.get('required_outputs', []))}",
             "",

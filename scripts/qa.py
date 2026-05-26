@@ -90,7 +90,7 @@ def approved_packet(path: str = "src/core/app.py", **extra: object) -> dict[str,
     packet: dict[str, object] = {
         "id": "PKT-001",
         "status": "approved",
-        "related_findings": ["ARCH-001"],
+        "related_findings": ["STRUCT-001"],
         "objective": "Scoped internal change.",
         "allowed_files": [path],
         "forbidden_files": [],
@@ -117,14 +117,21 @@ def approved_packet(path: str = "src/core/app.py", **extra: object) -> dict[str,
 
 def finding(**extra: object) -> dict[str, object]:
     record: dict[str, object] = {
-        "id": "ARCH-001",
+        "id": "STRUCT-001",
         "status": "candidate",
-        "category": "architecture",
+        "category": "structural-quality",
+        "primary_lane": "structural-quality",
+        "related_lanes": [],
         "zone": "Z-src-core",
         "title": "Example",
         "claim": "Example claim.",
-        "evidence": [],
-        "counterevidence": [],
+        "evidence": ["src/core/app.py is the affected module."],
+        "counterevidence": ["No runtime behavior change is claimed."],
+        "evidence_fields": {
+            "root_cause": "The module shape is hard to maintain.",
+            "objective_signals": ["single module owns the sample behavior"],
+            "impact": "Maintenance risk only; no bug is claimed.",
+        },
         "affected_files": ["src/core/app.py"],
         "contracts_touched": [],
         "tests_covering": [],
@@ -162,12 +169,13 @@ def qa_runtime() -> None:
             "kit.py",
             "schema/finding.schema.json",
             "state/project.json",
+            "policies/audit-criteria.json",
             "policies/metrics-policy.json",
             "templates/packet.json",
         ]:
             if not (kit / relative).exists():
                 raise QAError(f"missing installed runtime path: {relative}")
-        for removed in ["README.md", "reports/README.md", "adapters"]:
+        for removed in ["README.md", "reports/README.md", "adapters", "deep-research-report.md"]:
             if (kit / removed).exists():
                 raise QAError(f"runtime should not ship {removed}")
         if (kit / "state" / "findings.jsonl").exists():
@@ -182,8 +190,24 @@ def qa_runtime() -> None:
         tasks = [(json.loads(line)) for line in (kit / "state" / "agent-tasks.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
         if len(tasks) > 3:
             raise QAError(f"agents plan created too many tasks for a tiny project: {len(tasks)}")
+        if not tasks or not all(task.get("audit_queue") for task in tasks):
+            raise QAError("generated agent tasks missing audit_queue")
+        lanes = {lane for task in tasks for item in task.get("audit_queue", []) for lane in item.get("lanes", [])}
+        for lane in {"structural-quality", "test-reliability", "authority-drift"}:
+            if lane not in lanes:
+                raise QAError(f"agents plan did not include baseline audit lane: {lane}")
+        if any(lane not in {"security-risk", "dependency-risk", "authority-drift", "dynamic-usage", "test-reliability", "type-contract-safety", "dead-code", "duplicate-logic", "structural-quality"} for lane in lanes):
+            raise QAError(f"agents plan included unknown audit lane: {sorted(lanes)}")
+        bad_task = dict(tasks[0])
+        bad_queue = [dict(item) for item in bad_task.get("audit_queue", [])]
+        bad_queue[0] = dict(bad_queue[0], lanes=["not-a-lane"])
+        bad_task["audit_queue"] = bad_queue
+        write(kit / "state" / "agent-tasks.jsonl", json.dumps(bad_task) + "\n")
+        kit_cmd(kit, "validate", expect=1)
+        kit_cmd(kit, "agents", "plan")
+        tasks = [(json.loads(line)) for line in (kit / "state" / "agent-tasks.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
         roles = {role for task in tasks for item in task.get("role_queue", []) for role in item.get("roles", [])}
-        for role in {"architecture-auditor", "dead-code-auditor", "test-coverage-auditor", "duplicate-logic-auditor", "integration-auditor"}:
+        for role in {"architecture-auditor", "test-coverage-auditor", "integration-auditor"}:
             if role not in roles:
                 raise QAError(f"agents plan did not include role: {role}")
         if not any("README.md" in task.get("required_reads", []) for task in tasks):
@@ -214,11 +238,19 @@ def qa_runtime() -> None:
         kit_cmd(kit, "findings", "validate", expect=1)
 
         write(findings_path, "")
-        append_jsonl(findings_path, finding())
+        append_jsonl(findings_path, finding(evidence=[]))
         kit_cmd(kit, "findings", "validate", expect=1)
 
         write(findings_path, "")
         append_jsonl(findings_path, finding(metrics={}))
+        kit_cmd(kit, "findings", "validate", expect=1)
+
+        write(findings_path, "")
+        append_jsonl(findings_path, finding(evidence_fields={"root_cause": "Missing lane evidence."}))
+        kit_cmd(kit, "findings", "validate", expect=1)
+
+        write(findings_path, "")
+        append_jsonl(findings_path, finding(category="unknown-lane", primary_lane="unknown-lane"))
         kit_cmd(kit, "findings", "validate", expect=1)
 
         write(findings_path, "")
@@ -234,9 +266,15 @@ def qa_runtime() -> None:
         dead = finding(
             id="DEAD-001",
             category="dead-code",
+            primary_lane="dead-code",
+            related_lanes=[],
             title="Remove unused module",
             claim="src/core/app.py is removable.",
             recommendation="delete file",
+            evidence_fields={
+                "root_cause": "No confirmed usage was found yet.",
+                "reachability_summary": "Only partial static evidence exists.",
+            },
             dead_code={
                 "classification": "dynamic_usage_unknown",
                 "required_checks": {
@@ -255,6 +293,38 @@ def qa_runtime() -> None:
         kit_cmd(kit, "findings", "validate", expect=1)
 
         packets_path = kit / "state" / "packets.jsonl"
+        security = finding(
+            id="SEC-001",
+            category="security-risk",
+            primary_lane="security-risk",
+            title="Secret exposure",
+            claim="A real secret appears in source.",
+            evidence_fields={
+                "root_cause": "Sensitive credential committed to source.",
+                "threat_or_secret": "credential-like token",
+                "exposure_path": "src/core/app.py",
+            },
+            metrics={
+                "passing_tests": None,
+                "behavioral_parity": None,
+                "dependency_reduction": None,
+                "duplicate_logic_reduction": None,
+                "dead_code_confidence": None,
+                "complexity_reduction": None,
+                "risk_score": {
+                    "risk_level": 5,
+                    "risk_reason": "Security-critical finding.",
+                    "approval_path": "Escalate outside direct kit implementation.",
+                },
+                "reversibility": None,
+            },
+        )
+        write(findings_path, "")
+        append_jsonl(findings_path, security)
+        write(packets_path, "")
+        append_jsonl(packets_path, approved_packet(related_findings=["SEC-001"], risk_score=5, human_approval={"approved_by": "qa"}))
+        kit_cmd(kit, "packets", "validate", expect=1)
+
         write(packets_path, "")
         append_jsonl(packets_path, approved_packet(risk_score=4))
         kit_cmd(kit, "packets", "validate", expect=1)

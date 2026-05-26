@@ -8,6 +8,9 @@
     "allowed_writes": {
       "type": "array"
     },
+    "audit_queue": {
+      "type": "array"
+    },
     "forbidden_actions": {
       "type": "array"
     },

@@ -105,6 +105,8 @@ python .codebase-optimization-kit/kit.py status
 
 Core runtime behavior uses Python 3.10+ and the standard library. It may detect existing project tools, but baseline census, zones, planning, validation, and reporting do not require package installation.
 
+Audit criteria live in `.codebase-optimization-kit/policies/audit-criteria.json`. Generated agent tasks include a compact `audit_queue` of lanes, and findings must use known categories or project-local `custom_finding_categories`.
+
 ## Validation
 
 Validate an installed runtime through the wrapper:
@@ -132,6 +134,7 @@ Use `--enforce-packet` to fail when changed project files are outside the active
 - Risk 4 packets require explicit human approval.
 - Risk 5 work cannot be implemented directly from the kit.
 - Dead-code deletion and behavioral parity require structured evidence.
+- Audit findings require lane-specific evidence; security risk is risk 5 and blocked from direct kit implementation.
 - Reports are generated views over JSON state, not source of truth.
 
 ## Maintainer Docs
