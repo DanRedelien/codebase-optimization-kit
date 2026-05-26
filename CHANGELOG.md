@@ -61,3 +61,12 @@ Local maintenance update.
 - Improved zone splitting for deeper `src`, `lib`, `app`, `internal`, and test trees without turning filenames such as `README.md` or `__init__.py` into zones.
 - Increased agent planning scale to 24 slots and capped normal packing at 3 zones per agent slot.
 - Added QA regression coverage for deep zones, file-like path segments, and large-zone-count agent planning.
+
+## 1.0.2 - 2026-05-26
+
+Local prompt generation update.
+
+- Added `agents prompts` to generate one canonical copy-paste prompt per planned discovery task under `state/agent-prompts/`.
+- Keeps generated prompt files in one managed location and removes stale `TASK-*.md` files before regenerating them.
+- Directs each discovery agent to write findings into its own `state/task-findings/TASK-XXX.jsonl` file instead of editing `state/findings.jsonl` directly.
+- Moved prompt rendering into `kit_runtime/prompts.py` so `kit.py` stays a CLI wrapper instead of growing another embedded generator.

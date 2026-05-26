@@ -12,6 +12,7 @@ python .codebase-optimization-kit/kit.py doctor
 python .codebase-optimization-kit/kit.py census
 python .codebase-optimization-kit/kit.py zones suggest
 python .codebase-optimization-kit/kit.py agents plan
+python .codebase-optimization-kit/kit.py agents prompts
 ```
 
 5. Do not modify project source during discovery.
@@ -25,4 +26,4 @@ Record contradictions between docs, tests, schemas, contracts, and observed beha
 
 Before approving dead-code or behavior-sensitive packets, read `policies/PROJECT_DEAD_CODE_POLICY.md` and `policies/PROJECT_PARITY_POLICY.md` if they contain project-specific additions.
 
-Machine state lives in `state/`. Policies live in `policies/`. Human reports in `reports/` are generated views, not source of truth.
+Machine state lives in `state/`. Policies live in `policies/`. Human reports in `reports/` are generated views, not source of truth. Per-task discovery prompts, when generated, live only in `state/agent-prompts/`; use one `TASK-XXX.md` prompt per clean agent chat.

@@ -211,6 +211,7 @@ def qa_runtime() -> None:
         for relative in [
             "AGENT.md",
             "kit.py",
+            "kit_runtime/prompts.py",
             "schema/finding.schema.json",
             "state/project.json",
             "policies/audit-criteria.json",
@@ -236,6 +237,23 @@ def qa_runtime() -> None:
             raise QAError(f"agents plan created too many tasks for a tiny project: {len(tasks)}")
         if not tasks or not all(task.get("audit_queue") for task in tasks):
             raise QAError("generated agent tasks missing audit_queue")
+        kit_cmd(kit, "agents", "prompts")
+        prompts_dir = kit / "state" / "agent-prompts"
+        prompt_files = sorted(prompts_dir.glob("TASK-*.md"))
+        if len(prompt_files) != len(tasks):
+            raise QAError(f"agents prompts wrote {len(prompt_files)} prompt files for {len(tasks)} tasks")
+        first_prompt = prompt_files[0].read_text(encoding="utf-8")
+        if "Discovery pass TASK-001 only." not in first_prompt:
+            raise QAError("TASK-001 prompt missing task-specific instruction")
+        if ".codebase-optimization-kit/state/task-findings/TASK-001.jsonl" not in first_prompt:
+            raise QAError("TASK-001 prompt missing isolated findings output path")
+        stale_prompt = prompts_dir / "TASK-999.md"
+        write(stale_prompt, "stale\n")
+        kit_cmd(kit, "agents", "prompts")
+        if stale_prompt.exists():
+            raise QAError("agents prompts did not remove stale generated TASK prompt")
+        if not (kit / "state" / "task-findings").is_dir():
+            raise QAError("agents prompts did not create task-findings output directory")
         lanes = {lane for task in tasks for item in task.get("audit_queue", []) for lane in item.get("lanes", [])}
         for lane in {"structural-quality", "test-reliability", "authority-drift"}:
             if lane not in lanes:

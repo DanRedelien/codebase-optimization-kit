@@ -56,6 +56,7 @@ python .codebase-optimization-kit/kit.py doctor
 python .codebase-optimization-kit/kit.py census
 python .codebase-optimization-kit/kit.py zones suggest
 python .codebase-optimization-kit/kit.py agents plan
+python .codebase-optimization-kit/kit.py agents prompts
 ```
 
 ## Optional Installer
@@ -90,6 +91,7 @@ python .codebase-optimization-kit/kit.py doctor
 python .codebase-optimization-kit/kit.py census
 python .codebase-optimization-kit/kit.py zones suggest
 python .codebase-optimization-kit/kit.py agents plan
+python .codebase-optimization-kit/kit.py agents prompts
 python .codebase-optimization-kit/kit.py findings add --file finding.json
 python .codebase-optimization-kit/kit.py findings validate
 python .codebase-optimization-kit/kit.py reconcile
@@ -107,6 +109,8 @@ python .codebase-optimization-kit/kit.py status
 Core runtime behavior uses Python 3.10+ and the standard library. It may detect existing project tools, but baseline census, zones, planning, validation, and reporting do not require package installation.
 
 Audit criteria live in `.codebase-optimization-kit/policies/audit-criteria.json`; enforced audit helpers live in `kit_runtime/audit.py`. Generated agent tasks include a compact `audit_queue` of lanes, and findings must use known categories or project-local `custom_finding_categories`.
+
+`agents prompts` does not launch agents. It materializes copy-paste discovery prompts from `state/agent-tasks.jsonl` into the single managed directory `state/agent-prompts/`. Tag `state/agent-prompts/TASK-XXX.md` in a clean agent chat to run one planned task, and keep task-local findings in `state/task-findings/TASK-XXX.jsonl` until a coordinator merges or validates them.
 
 ## Validation
 

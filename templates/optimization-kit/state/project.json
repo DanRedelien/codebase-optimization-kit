@@ -1,7 +1,7 @@
 {
   "created_at": "2026-05-24",
   "custom_finding_categories": [],
-  "kit_version": "1.0.0",
+  "kit_version": "1.0.2",
   "project_root": ".",
   "schema_version": "1.0",
   "source_of_truth": {

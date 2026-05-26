@@ -16,9 +16,10 @@ from typing import Any
 
 from kit_runtime import audit as audit_runtime
 from kit_runtime import io as runtime_io
+from kit_runtime import prompts as prompt_runtime
 from kit_runtime.audit import AUDIT_LANE_PRIORITY, AUDIT_LANES, AUDIT_POLICY_ORDER
 
-KIT_VERSION = "1.0.0"
+KIT_VERSION = "1.0.2"
 SCHEMA_VERSION = "1.0"
 KIT_DIR_NAME = ".codebase-optimization-kit"
 MIN_PYTHON = (3, 10)
@@ -1159,6 +1160,21 @@ def agents_plan(_: argparse.Namespace) -> int:
     return 0
 
 
+def agents_prompts(_: argparse.Namespace) -> int:
+    ensure_runtime()
+    tasks, errors = read_jsonl(state("agent-tasks.jsonl"))
+    if errors:
+        return print_errors(errors)
+    if not tasks:
+        agents_plan(argparse.Namespace())
+        tasks, errors = read_jsonl(state("agent-tasks.jsonl"))
+        if errors:
+            return print_errors(errors)
+    written = prompt_runtime.write_task_prompts(tasks, STATE, kit_dir_name=HERE.name)
+    print(f"OK    wrote {len(written)} agent prompts to {rel(STATE / prompt_runtime.PROMPTS_DIR_NAME)}")
+    return 0
+
+
 def deletion_claim(finding: dict[str, Any]) -> bool:
     text = " ".join(str(finding.get(key, "")) for key in ["title", "claim", "recommendation"])
     return bool(re.search(r"\b(delete|deletion|remove|removal|safe to delete|removable)\b", text, re.IGNORECASE))
@@ -1673,6 +1689,7 @@ def build_parser() -> argparse.ArgumentParser:
     zones.add_parser("suggest").set_defaults(func=zones_suggest)
     agents = sub.add_parser("agents").add_subparsers(dest="agents_command", required=True)
     agents.add_parser("plan").set_defaults(func=agents_plan)
+    agents.add_parser("prompts").set_defaults(func=agents_prompts)
     findings = sub.add_parser("findings").add_subparsers(dest="findings_command", required=True)
     finding_add = findings.add_parser("add")
     finding_add.add_argument("--file", required=True)
