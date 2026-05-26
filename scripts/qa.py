@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -86,6 +87,48 @@ def kit_cmd(kit: Path, *args: str, expect: int = 0) -> subprocess.CompletedProce
     return run([PYTHON, str(kit / "kit.py"), *args], kit.parent, expect=expect)
 
 
+def load_kit_module(kit: Path):
+    module_name = f"kit_under_test_{abs(hash(str(kit)))}"
+    spec = importlib.util.spec_from_file_location(module_name, kit / "kit.py")
+    if spec is None or spec.loader is None:
+        raise QAError(f"cannot load kit module from {kit / 'kit.py'}")
+    module = importlib.util.module_from_spec(spec)
+    original_path = list(sys.path)
+    sys.path.insert(0, str(kit))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path = original_path
+    return module
+
+
+def assert_zone_planning_edges(kit: Path) -> None:
+    module = load_kit_module(kit)
+    expected_zones = {
+        "src/backtest_engine/application/README.md": "src/backtest_engine/application",
+        "src/backtest_engine/__init__.py": "src/backtest_engine",
+        "src/main.py": "src",
+        "src/backtest_engine/application/calibration/service.py": "src/backtest_engine/application/calibration",
+        "tests/test_app.py": "tests",
+        "tests/backtest_engine/application/test_flow.py": "tests/backtest_engine/application",
+    }
+    for path, expected in expected_zones.items():
+        actual = module.zone_key(path)
+        if actual != expected:
+            raise QAError(f"zone_key({path!r}) returned {actual!r}, expected {expected!r}")
+
+    zones = [{"name": f"src/pkg_{index}/area", "loc": 100, "files": 1, "risk_notes": []} for index in range(66)]
+    slots = module.recommended_agent_total(zones)
+    if slots != 22:
+        raise QAError(f"66 code zones should produce 22 slots, got {slots}")
+    assignments = module.assign_zones_to_slots(zones, slots)
+    if len(assignments) != slots:
+        raise QAError(f"assignments length {len(assignments)} did not match slots {slots}")
+    largest_slot = max(len(assigned) for assigned in assignments)
+    if largest_slot > 3:
+        raise QAError(f"assign_zones_to_slots packed more than 3 zones into a slot: {largest_slot}")
+
+
 def approved_packet(path: str = "src/core/app.py", **extra: object) -> dict[str, object]:
     packet: dict[str, object] = {
         "id": "PKT-001",
@@ -163,6 +206,7 @@ def qa_runtime() -> None:
         temp = Path(raw)
         project = create_project(temp)
         kit = copy_kit(project)
+        assert_zone_planning_edges(kit)
 
         for relative in [
             "AGENT.md",

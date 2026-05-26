@@ -208,6 +208,9 @@ SKIP_DIRS = {
 GENERATED_DIRS = {"generated", "gen", "dist", "build", "out", "target", "coverage"}
 VENDOR_DIRS = {"node_modules", "vendor", "third_party", "external", "bower_components"}
 ZONE_BOUNDARIES = {"packages", "apps", "services", "crates", "cmd", "modules", "plugins"}
+DEEP_ZONE_ROOTS = {"src", "lib", "app", "internal", "tests", "test", "spec", "specs"}
+MAX_AGENT_SLOTS = 24
+MAX_ZONES_PER_AGENT = 3
 GITIGNORE_START = "# === codebase-optimization-kit start ==="
 GITIGNORE_END = "# === codebase-optimization-kit end ==="
 
@@ -921,14 +924,30 @@ def census(_: argparse.Namespace) -> int:
     return 0
 
 
+def file_like_segment(segment: str) -> bool:
+    name = segment.strip()
+    lowered = name.lower()
+    extensionless_files = {"dockerfile", "makefile", "license", "notice", "readme", "copying", "authors", "changelog"}
+    return bool(PurePosixPath(name).suffix) or name in PACKAGE_MANIFESTS or name in LOCKFILES or name in CONFIG_NAMES or lowered in extensionless_files
+
+
+def zone_prefix(path_parts: tuple[str, ...], max_segments: int) -> str:
+    zone_parts: list[str] = []
+    for segment in path_parts[:max_segments]:
+        if zone_parts and file_like_segment(segment):
+            break
+        zone_parts.append(segment)
+    return "/".join(zone_parts) if zone_parts else "root"
+
+
 def zone_key(path: str) -> str:
     path_parts = parts(path)
     if not path_parts:
         return "root"
     if len(path_parts) >= 2 and path_parts[0] in ZONE_BOUNDARIES:
         return f"{path_parts[0]}/{path_parts[1]}"
-    if len(path_parts) >= 2 and path_parts[0] in {"src", "lib", "app", "internal"}:
-        return f"{path_parts[0]}/{path_parts[1]}"
+    if path_parts[0] in DEEP_ZONE_ROOTS:
+        return zone_prefix(path_parts, 4)
     return "root" if len(path_parts) == 1 else path_parts[0]
 
 
@@ -1072,6 +1091,11 @@ def recommended_agent_total(zones: list[dict[str, Any]]) -> int:
     total_loc = sum(int(zone.get("loc") or 0) for zone in zones)
     total_files = sum(int(zone.get("files") or 0) for zone in zones)
     high_risk = sum(1 for zone in zones if zone.get("risk_notes"))
+    code_zones = 0
+    for zone in zones:
+        name_parts = parts(str(zone.get("name", "")))
+        if name_parts and name_parts[0] in DEEP_ZONE_ROOTS:
+            code_zones += 1
     if total_loc >= 150000 or total_files >= 1200:
         base = 8
     elif total_loc >= 75000 or total_files >= 600:
@@ -1084,14 +1108,19 @@ def recommended_agent_total(zones: list[dict[str, Any]]) -> int:
         base = 2
     else:
         base = 1
-    return min(12, max(1, base + min(high_risk, 2)))
+    density_slots = (len(zones) + MAX_ZONES_PER_AGENT - 1) // MAX_ZONES_PER_AGENT
+    code_density_slots = (code_zones + MAX_ZONES_PER_AGENT - 1) // MAX_ZONES_PER_AGENT
+    desired = max(1, base + min(high_risk, 2), density_slots, code_density_slots)
+    return min(MAX_AGENT_SLOTS, max(1, len(zones)), desired)
 
 
 def assign_zones_to_slots(zones: list[dict[str, Any]], slots: int) -> list[list[dict[str, Any]]]:
+    slots = max(1, slots)
     assignments: list[list[dict[str, Any]]] = [[] for _ in range(slots)]
     weights = [0 for _ in range(slots)]
     for zone in sorted(zones, key=lambda item: (int(item.get("loc") or 0), int(item.get("files") or 0)), reverse=True):
-        slot = min(range(slots), key=lambda index: weights[index])
+        eligible_slots = [index for index, assigned in enumerate(assignments) if len(assigned) < MAX_ZONES_PER_AGENT]
+        slot = min(eligible_slots or range(slots), key=lambda index: weights[index])
         assignments[slot].append(zone)
         weights[slot] += int(zone.get("loc") or 0) + int(zone.get("files") or 0) * 25
     return assignments

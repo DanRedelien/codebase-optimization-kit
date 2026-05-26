@@ -53,3 +53,11 @@ Initial open-source release.
 - The runtime does not install or require external scanners.
 - Project docs, tests, schemas, and contracts remain authoritative inputs, but contradictions should be recorded as `authority-drift` findings.
 - Security findings are discovery/blocker signals for escalation; the kit is not a security remediation framework.
+
+## 1.0.1 - 2026-05-26
+
+Local maintenance update.
+
+- Improved zone splitting for deeper `src`, `lib`, `app`, `internal`, and test trees without turning filenames such as `README.md` or `__init__.py` into zones.
+- Increased agent planning scale to 24 slots and capped normal packing at 3 zones per agent slot.
+- Added QA regression coverage for deep zones, file-like path segments, and large-zone-count agent planning.
