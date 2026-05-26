@@ -25,6 +25,7 @@ templates/optimization-kit/
   AGENT.md
   SAFE_TO_DELETE.md
   kit.py
+  kit_runtime/
   schema/
   state/
   policies/
@@ -105,7 +106,7 @@ python .codebase-optimization-kit/kit.py status
 
 Core runtime behavior uses Python 3.10+ and the standard library. It may detect existing project tools, but baseline census, zones, planning, validation, and reporting do not require package installation.
 
-Audit criteria live in `.codebase-optimization-kit/policies/audit-criteria.json`. Generated agent tasks include a compact `audit_queue` of lanes, and findings must use known categories or project-local `custom_finding_categories`.
+Audit criteria live in `.codebase-optimization-kit/policies/audit-criteria.json`; enforced audit helpers live in `kit_runtime/audit.py`. Generated agent tasks include a compact `audit_queue` of lanes, and findings must use known categories or project-local `custom_finding_categories`.
 
 ## Validation
 
@@ -135,6 +136,7 @@ Use `--enforce-packet` to fail when changed project files are outside the active
 - Risk 5 work cannot be implemented directly from the kit.
 - Dead-code deletion and behavioral parity require structured evidence.
 - Audit findings require lane-specific evidence; security risk is risk 5 and blocked from direct kit implementation.
+- `security-risk` is queued only for security-sensitive path signals; normal source/config zones use lower-consequence audit lanes first.
 - Reports are generated views over JSON state, not source of truth.
 
 ## Maintainer Docs

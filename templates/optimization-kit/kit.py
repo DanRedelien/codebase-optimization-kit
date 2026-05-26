@@ -11,9 +11,12 @@ import shutil
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+from kit_runtime import audit as audit_runtime
+from kit_runtime import io as runtime_io
+from kit_runtime.audit import AUDIT_LANE_PRIORITY, AUDIT_LANES, AUDIT_POLICY_ORDER
 
 KIT_VERSION = "1.0.0"
 SCHEMA_VERSION = "1.0"
@@ -60,41 +63,6 @@ ROLES = [
     "domain-risk-auditor",
     "todo-assumption-auditor",
 ]
-AUDIT_LANE_PRIORITY = [
-    "security-risk",
-    "dependency-risk",
-    "authority-drift",
-    "dynamic-usage",
-    "test-reliability",
-    "type-contract-safety",
-    "dead-code",
-    "duplicate-logic",
-    "structural-quality",
-]
-AUDIT_LANES = set(AUDIT_LANE_PRIORITY)
-AUDIT_POLICY_ORDER = ["discovery-only", "packet-ok", "human-approval", "blocked-direct"]
-ROLE_TO_AUDIT_LANES = {
-    "architecture-auditor": ["structural-quality", "type-contract-safety"],
-    "dead-code-auditor": ["dead-code", "dynamic-usage"],
-    "dependency-auditor": ["dependency-risk"],
-    "duplicate-logic-auditor": ["duplicate-logic"],
-    "test-coverage-auditor": ["test-reliability"],
-    "performance-auditor": ["structural-quality"],
-    "integration-auditor": ["dynamic-usage", "authority-drift"],
-    "domain-risk-auditor": ["security-risk", "authority-drift"],
-    "todo-assumption-auditor": ["authority-drift", "structural-quality"],
-}
-AUDIT_LANE_TO_ROLE = {
-    "security-risk": "domain-risk-auditor",
-    "dependency-risk": "dependency-auditor",
-    "authority-drift": "integration-auditor",
-    "dynamic-usage": "integration-auditor",
-    "test-reliability": "test-coverage-auditor",
-    "type-contract-safety": "architecture-auditor",
-    "dead-code": "dead-code-auditor",
-    "duplicate-logic": "duplicate-logic-auditor",
-    "structural-quality": "architecture-auditor",
-}
 DEAD_CODE_CLASSES = {
     "truly_unreachable",
     "unused_internal_export",
@@ -240,122 +208,37 @@ SKIP_DIRS = {
 GENERATED_DIRS = {"generated", "gen", "dist", "build", "out", "target", "coverage"}
 VENDOR_DIRS = {"node_modules", "vendor", "third_party", "external", "bower_components"}
 ZONE_BOUNDARIES = {"packages", "apps", "services", "crates", "cmd", "modules", "plugins"}
-JSON_DEFAULTS: dict[str, Any] = {
-    "project.json": {},
-    "census.json": {"summary": {}, "language_mix": {}, "loc_by_directory": {}, "largest_files": []},
-    "zones.json": {"zones": []},
-    "contracts.json": {"contracts": []},
-    "tests.json": {"test_files": [], "commands": []},
-    "metrics.json": {"metrics": {}},
-}
-JSONL_FILES = [
-    "file-tree.jsonl",
-    "agent-tasks.jsonl",
-    "findings.jsonl",
-    "packets.jsonl",
-    "validations.jsonl",
-    "locks.jsonl",
-    "decisions.jsonl",
-]
 GITIGNORE_START = "# === codebase-optimization-kit start ==="
 GITIGNORE_END = "# === codebase-optimization-kit end ==="
 
 
-def now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
-
-
-def norm(raw: str | Path) -> str:
-    value = str(raw).replace("\\", "/").strip()
-    value = re.sub(r"^\./+", "", value)
-    parts = [part for part in PurePosixPath(value).parts if part not in {"", "."}]
-    return PurePosixPath(*parts).as_posix() if parts else "."
+now = runtime_io.now
+today = runtime_io.today
+norm = runtime_io.norm
 
 
 def rel(path: Path) -> str:
-    try:
-        return norm(path.relative_to(PROJECT_ROOT))
-    except ValueError:
-        return str(path)
+    return runtime_io.rel(path, PROJECT_ROOT)
 
 
 def state(name: str) -> Path:
-    return STATE / name
+    return runtime_io.state(STATE, name)
 
 
-def load_json(path: Path, default: Any) -> Any:
-    if not path.exists():
-        return default
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def save_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=True, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+load_json = runtime_io.load_json
+save_json = runtime_io.save_json
 
 
 def read_jsonl(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
-    records: list[dict[str, Any]] = []
-    errors: list[str] = []
-    if not path.exists():
-        return records, errors
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as exc:
-            errors.append(f"{rel(path)}:{line_no}: invalid JSONL record: {exc.msg}")
-            continue
-        if not isinstance(record, dict):
-            errors.append(f"{rel(path)}:{line_no}: JSONL record must be an object")
-            continue
-        records.append(record)
-    return records, errors
+    return runtime_io.read_jsonl(path, PROJECT_ROOT)
 
 
-def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        for record in records:
-            handle.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
-
-
-def append_jsonl(path: Path, record: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
+write_jsonl = runtime_io.write_jsonl
+append_jsonl = runtime_io.append_jsonl
 
 
 def ensure_runtime() -> None:
-    for directory in [STATE, REPORTS, SCHEMA, HERE / "policies", HERE / "templates"]:
-        directory.mkdir(parents=True, exist_ok=True)
-    for filename, default in JSON_DEFAULTS.items():
-        path = state(filename)
-        if not path.exists():
-            save_json(path, default)
-    for filename in JSONL_FILES:
-        path = state(filename)
-        if not path.exists():
-            path.write_text("", encoding="utf-8", newline="\n")
-    project = load_json(state("project.json"), {})
-    if not isinstance(project, dict):
-        project = {}
-    project.setdefault("kit_version", KIT_VERSION)
-    project.setdefault("schema_version", SCHEMA_VERSION)
-    project.setdefault("workspace_type", "temporary")
-    project.setdefault("project_root", ".")
-    project["target_dir"] = HERE.name
-    project.setdefault("created_at", today())
-    if project.get("created_at") == "YYYY-MM-DD":
-        project["created_at"] = today()
-    project.setdefault("source_of_truth", {"root_agents": "AGENTS.md", "project_readme": "README.md", "project_docs": []})
-    project.setdefault("custom_finding_categories", [])
-    save_json(state("project.json"), project)
+    runtime_io.ensure_runtime(HERE, PROJECT_ROOT, STATE, REPORTS, SCHEMA, KIT_VERSION, SCHEMA_VERSION)
 
 
 def non_empty(value: Any) -> bool:
@@ -379,9 +262,7 @@ def load_audit_policy() -> dict[str, Any]:
 
 
 def audit_lanes(policy: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
-    policy = policy if policy is not None else load_audit_policy()
-    lanes = policy.get("lanes", {}) if isinstance(policy, dict) else {}
-    return {str(key): value for key, value in lanes.items() if isinstance(value, dict)}
+    return audit_runtime.policy_lanes(policy if policy is not None else load_audit_policy())
 
 
 def custom_finding_categories() -> set[str]:
@@ -395,146 +276,31 @@ def custom_finding_categories() -> set[str]:
 
 
 def known_finding_categories() -> set[str]:
-    return {str(item.get("finding_category")) for item in audit_lanes().values() if isinstance(item.get("finding_category"), str)} | custom_finding_categories()
-
-
-def audit_policy_rank(policy_name: str) -> int:
-    try:
-        return AUDIT_POLICY_ORDER.index(policy_name)
-    except ValueError:
-        return -1
-
-
-def most_restrictive_policy(lanes: list[str]) -> str:
-    policy = "discovery-only"
-    configs = audit_lanes()
-    for lane in lanes:
-        candidate = str(configs.get(lane, {}).get("implementation_policy", "discovery-only"))
-        if audit_policy_rank(candidate) > audit_policy_rank(policy):
-            policy = candidate
-    return policy
+    return audit_runtime.known_categories(load_audit_policy(), custom_finding_categories())
 
 
 def risk_floor_for_lanes(lanes: list[str]) -> int:
-    configs = audit_lanes()
-    floor = 1
-    for lane in lanes:
-        config = configs.get(lane, {})
-        raw = config.get("default_risk_floor", 1)
-        if isinstance(raw, int):
-            floor = max(floor, raw)
-        policy = config.get("implementation_policy")
-        if policy == "human-approval":
-            floor = max(floor, 4)
-        elif policy == "blocked-direct":
-            floor = max(floor, 5)
-    return floor
+    return audit_runtime.risk_floor_for_lanes(lanes, load_audit_policy())
 
 
 def metric_risk_level(metrics: Any) -> int | None:
-    if not isinstance(metrics, dict):
-        return None
-    risk = metrics.get("risk_score")
-    if isinstance(risk, dict):
-        raw = risk.get("risk_level")
-        return raw if isinstance(raw, int) else None
-    return risk if isinstance(risk, int) else None
+    return audit_runtime.metric_risk_level(metrics)
 
 
 def finding_audit_lanes(finding: dict[str, Any]) -> tuple[str | None, list[str], list[str]]:
-    errors: list[str] = []
-    category = finding.get("category")
-    lanes = audit_lanes()
-    primary = finding.get("primary_lane")
-    if primary is None and isinstance(finding.get("audit"), dict):
-        primary = finding["audit"].get("primary_lane")
-    if primary is None and isinstance(category, str) and category in lanes:
-        primary = category
-    if primary is not None and primary not in lanes:
-        errors.append(f"finding {finding.get('id', '<unknown>')} has unknown primary_lane: {primary}")
-
-    related = finding.get("related_lanes")
-    if related is None and isinstance(finding.get("audit"), dict):
-        related = finding["audit"].get("related_lanes")
-    if related is None:
-        related = []
-    if not isinstance(related, list):
-        errors.append(f"finding {finding.get('id', '<unknown>')} related_lanes must be a list")
-        related_lanes: list[str] = []
-    else:
-        related_lanes = [str(item) for item in related]
-        for lane in related_lanes:
-            if lane not in lanes:
-                errors.append(f"finding {finding.get('id', '<unknown>')} has unknown related lane: {lane}")
-    if primary is not None:
-        related_lanes = [lane for lane in related_lanes if lane != primary]
-    return str(primary) if primary is not None else None, related_lanes, errors
-
-
-def evidence_container(finding: dict[str, Any]) -> dict[str, Any]:
-    containers: list[dict[str, Any]] = []
-    for key in ["evidence_fields", "category_evidence"]:
-        value = finding.get(key)
-        if isinstance(value, dict):
-            containers.append(value)
-    audit = finding.get("audit")
-    if isinstance(audit, dict):
-        for key in ["evidence_fields", "category_evidence", "evidence"]:
-            value = audit.get(key)
-            if isinstance(value, dict):
-                containers.append(value)
-        containers.append(audit)
-    merged: dict[str, Any] = {}
-    for container in containers:
-        merged.update(container)
-    return merged
+    return audit_runtime.finding_audit_lanes(finding, load_audit_policy())
 
 
 def audit_evidence_value(finding: dict[str, Any], key: str) -> Any:
-    if key == "affected_files":
-        return finding.get("affected_files")
-    if key == "counterevidence_or_gap":
-        audit = finding.get("audit") if isinstance(finding.get("audit"), dict) else {}
-        fields = evidence_container(finding)
-        return finding.get("counterevidence") or fields.get("evidence_gap") or fields.get("counterevidence_or_gap") or audit.get("evidence_gap")
-    if key in finding:
-        return finding.get(key)
-    fields = evidence_container(finding)
-    if key in fields:
-        return fields.get(key)
-    if key in DEAD_CODE_CHECKS:
-        dead = finding.get("dead_code")
-        checks = dead.get("required_checks") if isinstance(dead, dict) else None
-        if isinstance(checks, dict):
-            return checks.get(key)
-    return None
+    return audit_runtime.evidence_value(finding, key, DEAD_CODE_CHECKS)
 
 
 def audit_required_evidence_errors(finding: dict[str, Any], primary_lane: str | None) -> list[str]:
-    if primary_lane is None:
-        return []
-    lane = audit_lanes().get(primary_lane, {})
-    required = lane.get("required_evidence", [])
-    if not isinstance(required, list):
-        return [f"finding {finding.get('id', '<unknown>')} audit lane {primary_lane} required_evidence must be a list in policy"]
-    errors = []
-    for key in required:
-        if not isinstance(key, str):
-            continue
-        if not non_empty(audit_evidence_value(finding, key)):
-            errors.append(f"finding {finding.get('id', '<unknown>')} category {primary_lane} missing category-specific evidence field: {key}")
-    return errors
-
-
-def normalized_root_cause(finding: dict[str, Any]) -> str:
-    root = audit_evidence_value(finding, "root_cause") or finding.get("claim") or ""
-    return re.sub(r"\s+", " ", str(root)).strip().lower()
+    return audit_runtime.required_evidence_errors(finding, primary_lane, load_audit_policy(), non_empty, DEAD_CODE_CHECKS)
 
 
 def finding_dedupe_key(finding: dict[str, Any]) -> str:
-    primary, _, _ = finding_audit_lanes(finding)
-    paths = sorted(norm(path) for path in finding.get("affected_files") or [])
-    return json.dumps([paths, normalized_root_cause(finding), primary or finding.get("category")], sort_keys=True)
+    return audit_runtime.finding_dedupe_key(finding, load_audit_policy(), DEAD_CODE_CHECKS)
 
 
 def update_audit_process_metrics(extra: dict[str, Any] | None = None) -> None:
@@ -797,6 +563,20 @@ def validate_policy_drift() -> list[str]:
     lanes = audit_lanes(audit_policy)
     if set(lanes.keys()) != AUDIT_LANES:
         errors.append("policies/audit-criteria.json lanes drift from kit.py")
+    limits = audit_policy.get("policy_limits", {}) if isinstance(audit_policy, dict) else {}
+    if isinstance(limits, dict):
+        max_lanes = limits.get("max_lanes")
+        max_evidence = limits.get("max_required_evidence_fields_per_lane")
+        max_hints = limits.get("max_tool_hints_per_lane")
+        for key in ["max_lanes", "max_required_evidence_fields_per_lane", "max_tool_hints_per_lane"]:
+            if not isinstance(limits.get(key), int) or limits[key] <= 0:
+                errors.append(f"policies/audit-criteria.json policy_limits.{key} must be a positive integer")
+        if isinstance(max_lanes, int) and len(lanes) > max_lanes:
+            errors.append("policies/audit-criteria.json has more lanes than policy_limits.max_lanes")
+    else:
+        errors.append("policies/audit-criteria.json missing policy_limits object")
+        max_evidence = None
+        max_hints = None
     if audit_policy.get("lane_priority") != AUDIT_LANE_PRIORITY:
         errors.append("policies/audit-criteria.json lane_priority drifts from kit.py")
     if audit_policy.get("policy_order") != AUDIT_POLICY_ORDER:
@@ -810,6 +590,12 @@ def validate_policy_drift() -> list[str]:
         floor = config.get("default_risk_floor")
         if not isinstance(floor, int) or not 1 <= floor <= 5:
             errors.append(f"policies/audit-criteria.json lane {lane} default_risk_floor must be 1-5")
+        required = config.get("required_evidence", [])
+        if isinstance(max_evidence, int) and isinstance(required, list) and len(required) > max_evidence:
+            errors.append(f"policies/audit-criteria.json lane {lane} exceeds required evidence field limit")
+        hints = config.get("tool_hints", [])
+        if isinstance(max_hints, int) and isinstance(hints, list) and len(hints) > max_hints:
+            errors.append(f"policies/audit-criteria.json lane {lane} exceeds tool hint limit")
     finding_schema, schema_errors = load_schema("finding.schema.json")
     errors.extend(schema_errors)
     if finding_schema:
@@ -978,23 +764,7 @@ def tool_info(paths: list[str]) -> dict[str, Any]:
 
 
 def audit_baseline_caps() -> dict[str, int]:
-    policy = load_audit_policy()
-    caps = policy.get("baseline_caps", {}) if isinstance(policy, dict) else {}
-    defaults = {
-        "max_bytes_per_text_file": 262144,
-        "total_content_read_bytes": 67108864,
-        "max_content_sampled_files": 20000,
-        "structural_top_files_per_zone": 50,
-        "duplicate_top_files_project": 200,
-        "duplicate_top_files_per_zone": 20,
-        "soft_time_budget_seconds": 60,
-        "hard_time_budget_seconds": 120,
-    }
-    for key, value in list(defaults.items()):
-        raw = caps.get(key)
-        if isinstance(raw, int) and raw > 0:
-            defaults[key] = raw
-    return defaults
+    return audit_runtime.baseline_caps(load_audit_policy())
 
 
 def baseline_audit(records: list[dict[str, Any]], skipped: list[str], tools: dict[str, Any]) -> dict[str, Any]:
@@ -1284,49 +1054,12 @@ def context_reads_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) 
     return dedupe_limited(required, 24), dedupe_limited(optional, 32)
 
 
-def lane_priority_key(lane: str) -> int:
-    try:
-        return AUDIT_LANE_PRIORITY.index(lane)
-    except ValueError:
-        return len(AUDIT_LANE_PRIORITY)
-
-
-def zone_records(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [record for record in records if record.get("zone") == zone.get("id")]
-
-
 def audit_lanes_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
-    loc = int(zone.get("loc") or 0)
-    files = int(zone.get("files") or 0)
-    risk_notes = set(zone.get("risk_notes") or [])
-    items = zone_records(zone, records)
-    names = {PurePosixPath(str(item.get("path", ""))).name for item in items}
-    has_source = any("source" in (item.get("signals") or []) for item in items)
-    has_config = any(name in CONFIG_NAMES or str(item.get("path", "")).startswith(".github/") for item in items for name in [PurePosixPath(str(item.get("path", ""))).name])
-    has_entrypoint = bool(zone.get("entrypoints"))
-    lanes = ["structural-quality", "test-reliability", "authority-drift"]
-    if has_source or has_config or has_entrypoint:
-        lanes.extend(["security-risk", "dynamic-usage"])
-    if "dependency-metadata" in risk_notes or any(name in PACKAGE_MANIFESTS or name in LOCKFILES for name in names):
-        lanes.append("dependency-risk")
-    if loc >= 12000 or files >= 120 or "oversized-zone" in risk_notes:
-        lanes.extend(["structural-quality", "duplicate-logic"])
-    if loc >= 12000 or files >= 120:
-        lanes.append("type-contract-safety")
-    unique = []
-    for lane in sorted(lanes, key=lane_priority_key):
-        if lane not in unique:
-            unique.append(lane)
-    return unique
+    return audit_runtime.audit_lanes_for_zone(zone, records, PACKAGE_MANIFESTS, LOCKFILES, CONFIG_NAMES)
 
 
 def roles_for_lanes(lanes: list[str]) -> list[str]:
-    roles: list[str] = []
-    for lane in lanes:
-        role = AUDIT_LANE_TO_ROLE.get(lane, "architecture-auditor")
-        if role not in roles:
-            roles.append(role)
-    return roles
+    return audit_runtime.roles_for_lanes(lanes)
 
 
 def roles_for(zone: dict[str, Any], records: list[dict[str, Any]] | None = None) -> list[str]:

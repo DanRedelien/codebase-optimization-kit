@@ -175,7 +175,7 @@ def qa_runtime() -> None:
         ]:
             if not (kit / relative).exists():
                 raise QAError(f"missing installed runtime path: {relative}")
-        for removed in ["README.md", "reports/README.md", "adapters", "deep-research-report.md"]:
+        for removed in ["README.md", "reports/README.md", "adapters"]:
             if (kit / removed).exists():
                 raise QAError(f"runtime should not ship {removed}")
         if (kit / "state" / "findings.jsonl").exists():
@@ -196,6 +196,8 @@ def qa_runtime() -> None:
         for lane in {"structural-quality", "test-reliability", "authority-drift"}:
             if lane not in lanes:
                 raise QAError(f"agents plan did not include baseline audit lane: {lane}")
+        if "security-risk" in lanes:
+            raise QAError("agents plan should not add security-risk without security-sensitive path signals")
         if any(lane not in {"security-risk", "dependency-risk", "authority-drift", "dynamic-usage", "test-reliability", "type-contract-safety", "dead-code", "duplicate-logic", "structural-quality"} for lane in lanes):
             raise QAError(f"agents plan included unknown audit lane: {sorted(lanes)}")
         bad_task = dict(tasks[0])
@@ -204,8 +206,14 @@ def qa_runtime() -> None:
         bad_task["audit_queue"] = bad_queue
         write(kit / "state" / "agent-tasks.jsonl", json.dumps(bad_task) + "\n")
         kit_cmd(kit, "validate", expect=1)
+        write(project / "src" / "auth" / "session.py", "SESSION_TOKEN = 'example'\n")
+        kit_cmd(kit, "census")
+        kit_cmd(kit, "zones", "suggest")
         kit_cmd(kit, "agents", "plan")
         tasks = [(json.loads(line)) for line in (kit / "state" / "agent-tasks.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+        lanes = {lane for task in tasks for item in task.get("audit_queue", []) for lane in item.get("lanes", [])}
+        if "security-risk" not in lanes:
+            raise QAError("agents plan did not add security-risk for security-sensitive path signals")
         roles = {role for task in tasks for item in task.get("role_queue", []) for role in item.get("roles", [])}
         for role in {"architecture-auditor", "test-coverage-auditor", "integration-auditor"}:
             if role not in roles:

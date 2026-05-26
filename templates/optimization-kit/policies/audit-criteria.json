@@ -170,5 +170,10 @@
     "human-approval",
     "blocked-direct"
   ],
+  "policy_limits": {
+    "max_lanes": 9,
+    "max_required_evidence_fields_per_lane": 6,
+    "max_tool_hints_per_lane": 2
+  },
   "schema_version": "1.0"
 }
