@@ -19,7 +19,7 @@ from kit_runtime import io as runtime_io
 from kit_runtime import prompts as prompt_runtime
 from kit_runtime.audit import AUDIT_LANE_PRIORITY, AUDIT_LANES, AUDIT_POLICY_ORDER
 
-KIT_VERSION = "1.0.2"
+KIT_VERSION = "1.0.3"
 SCHEMA_VERSION = "1.0"
 KIT_DIR_NAME = ".codebase-optimization-kit"
 MIN_PYTHON = (3, 10)
@@ -263,6 +263,12 @@ def load_metrics_policy() -> dict[str, Any]:
 def load_audit_policy() -> dict[str, Any]:
     value = load_json(POLICIES / "audit-criteria.json", {})
     return value if isinstance(value, dict) else {}
+
+
+def policy_limit(key: str, default: int) -> int:
+    limits = load_audit_policy().get("policy_limits", {})
+    raw = limits.get(key) if isinstance(limits, dict) else None
+    return raw if isinstance(raw, int) and raw > 0 else default
 
 
 def audit_lanes(policy: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
@@ -1056,26 +1062,51 @@ def authority_doc_candidates(records: list[dict[str, Any]]) -> list[str]:
     return dedupe_limited(candidates, 10)
 
 
+def zone_hotspot_reads(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
+    zone_id = zone.get("id")
+    zone_source = [
+        record
+        for record in records
+        if record.get("zone") == zone_id
+        and "source" in (record.get("signals") or [])
+        and not record.get("is_test")
+        and not record.get("is_generated")
+        and not record.get("is_vendor")
+    ]
+    ranked = sorted(zone_source, key=lambda item: int(item.get("loc") or 0), reverse=True)
+    return [str(item.get("path")) for item in ranked[:10] if item.get("path")]
+
+
 def context_reads_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     zone_id = zone.get("id")
-    required: list[str] = authority_doc_candidates(records)[:4]
-    optional: list[str] = authority_doc_candidates(records)[4:]
+    authority = authority_doc_candidates(records)
+    required: list[str] = list((zone.get("entrypoints") or [])[:6])
+    required.extend(zone_hotspot_reads(zone, records))
+    required.extend(authority[:4])
+    optional: list[str] = list(authority[4:])
     census_doc = load_json(state("census.json"), {})
     if isinstance(census_doc, dict):
-        required.extend((census_doc.get("package_manifests", []) or [])[:8])
+        required.extend((census_doc.get("package_manifests", []) or [])[:6])
         optional.extend((census_doc.get("config_files", []) or [])[:12])
-    required.extend((zone.get("tests") or [])[:12])
+    required.extend((zone.get("tests") or [])[:8])
     required.extend(record["path"] for record in records if record.get("zone") == zone_id and "test" in (record.get("signals") or []))
     contracts = load_json(state("contracts.json"), {"contracts": []})
     contract_records = contracts.get("contracts", []) if isinstance(contracts, dict) else []
     if not contract_records:
         contract_records = contract_candidates_from_records(records)
     optional.extend(str(item.get("path")) for item in contract_records if item.get("path"))
-    return dedupe_limited(required, 24), dedupe_limited(optional, 32)
+    return dedupe_limited(required, 32), dedupe_limited(optional, 40)
 
 
 def audit_lanes_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
-    return audit_runtime.audit_lanes_for_zone(zone, records, PACKAGE_MANIFESTS, LOCKFILES, CONFIG_NAMES)
+    cap = policy_limit("max_assigned_lanes_per_zone", audit_runtime.DEFAULT_MAX_ASSIGNED_LANES_PER_ZONE)
+    return audit_runtime.audit_lanes_for_zone(zone, records, PACKAGE_MANIFESTS, LOCKFILES, CONFIG_NAMES, cap)
+
+
+def focused_lanes_for_zone(zone: dict[str, Any], records: list[dict[str, Any]]) -> list[str]:
+    return audit_runtime.audit_lanes_for_zone(
+        zone, records, PACKAGE_MANIFESTS, LOCKFILES, CONFIG_NAMES, max_assigned_lanes=None, force_value_lanes=True
+    )
 
 
 def roles_for_lanes(lanes: list[str]) -> list[str]:
@@ -1088,7 +1119,11 @@ def roles_for(zone: dict[str, Any], records: list[dict[str, Any]] | None = None)
     return roles_for_lanes(audit_lanes_for_zone(zone, records))
 
 
-def recommended_agent_total(zones: list[dict[str, Any]]) -> int:
+def recommended_agent_total(
+    zones: list[dict[str, Any]],
+    max_zones_per_agent: int = MAX_ZONES_PER_AGENT,
+    max_agent_slots: int = MAX_AGENT_SLOTS,
+) -> int:
     total_loc = sum(int(zone.get("loc") or 0) for zone in zones)
     total_files = sum(int(zone.get("files") or 0) for zone in zones)
     high_risk = sum(1 for zone in zones if zone.get("risk_notes"))
@@ -1109,34 +1144,34 @@ def recommended_agent_total(zones: list[dict[str, Any]]) -> int:
         base = 2
     else:
         base = 1
-    density_slots = (len(zones) + MAX_ZONES_PER_AGENT - 1) // MAX_ZONES_PER_AGENT
-    code_density_slots = (code_zones + MAX_ZONES_PER_AGENT - 1) // MAX_ZONES_PER_AGENT
+    density_slots = (len(zones) + max_zones_per_agent - 1) // max_zones_per_agent
+    code_density_slots = (code_zones + max_zones_per_agent - 1) // max_zones_per_agent
     desired = max(1, base + min(high_risk, 2), density_slots, code_density_slots)
-    return min(MAX_AGENT_SLOTS, max(1, len(zones)), desired)
+    return min(max_agent_slots, max(1, len(zones)), desired)
 
 
-def assign_zones_to_slots(zones: list[dict[str, Any]], slots: int) -> list[list[dict[str, Any]]]:
+def assign_zones_to_slots(
+    zones: list[dict[str, Any]],
+    slots: int,
+    max_zones_per_agent: int = MAX_ZONES_PER_AGENT,
+) -> list[list[dict[str, Any]]]:
     slots = max(1, slots)
     assignments: list[list[dict[str, Any]]] = [[] for _ in range(slots)]
     weights = [0 for _ in range(slots)]
     for zone in sorted(zones, key=lambda item: (int(item.get("loc") or 0), int(item.get("files") or 0)), reverse=True):
-        eligible_slots = [index for index, assigned in enumerate(assignments) if len(assigned) < MAX_ZONES_PER_AGENT]
+        eligible_slots = [index for index, assigned in enumerate(assignments) if len(assigned) < max_zones_per_agent]
         slot = min(eligible_slots or range(slots), key=lambda index: weights[index])
         assignments[slot].append(zone)
         weights[slot] += int(zone.get("loc") or 0) + int(zone.get("files") or 0) * 25
     return assignments
 
 
-def agents_plan(_: argparse.Namespace) -> int:
-    ensure_runtime()
-    zones = load_json(state("zones.json"), {"zones": []}).get("zones", [])
-    if not zones:
-        zones_suggest(argparse.Namespace())
-        zones = load_json(state("zones.json"), {"zones": []}).get("zones", [])
-    records, _ = read_jsonl(state("file-tree.jsonl"))
-    slots = recommended_agent_total(zones)
-    tasks = []
-    for index, assigned_zones in enumerate(assign_zones_to_slots(zones, slots), start=1):
+def build_broad_tasks(zones: list[dict[str, Any]], records: list[dict[str, Any]], max_context_tokens: int) -> list[dict[str, Any]]:
+    max_zones = policy_limit("max_zones_per_agent", MAX_ZONES_PER_AGENT)
+    max_slots = policy_limit("max_agent_slots", MAX_AGENT_SLOTS)
+    slots = recommended_agent_total(zones, max_zones, max_slots)
+    tasks: list[dict[str, Any]] = []
+    for index, assigned_zones in enumerate(assign_zones_to_slots(zones, slots, max_zones), start=1):
         required_reads: list[str] = []
         optional_reads: list[str] = []
         allowed_reads: list[str] = []
@@ -1150,13 +1185,49 @@ def agents_plan(_: argparse.Namespace) -> int:
             optional_reads.extend(zone_optional)
             allowed_reads.extend(zone.get("globs") or [])
             role_queue.append({"zone": zone["id"], "roles": roles})
-            audit_queue.append({"zone": zone["id"], "lanes": lanes, "baseline_first": True})
+            audit_queue.append({"zone": zone["id"], "lanes": lanes, "baseline_first": True, "value_first": True})
         primary_role = role_queue[0]["roles"][0] if role_queue else "architecture-auditor"
-        tasks.append({"id": f"TASK-{index:03d}", "role": primary_role, "zone": ",".join(zone["id"] for zone in assigned_zones), "zones": [zone["id"] for zone in assigned_zones], "objective": "Run baseline audit_queue lanes in priority order with evidence only; do not edit source files.", "allowed_reads": dedupe_limited(allowed_reads, 80), "required_reads": dedupe_limited(required_reads, 40), "optional_reads": dedupe_limited(optional_reads, 60), "role_queue": role_queue, "audit_queue": audit_queue, "allowed_writes": [f"{HERE.name}/state/findings.jsonl"], "required_outputs": ["baseline_health_signals", "findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code", "install_scanner"], "recommended_agent_slot": index, "max_context_files": min(sum(int(zone.get("files") or 0) for zone in assigned_zones) + 40, 240), "max_context_tokens": 120000, "status": "open"})
+        task_id = f"TASK-{index:03d}"
+        tasks.append({"id": task_id, "role": primary_role, "zone": ",".join(zone["id"] for zone in assigned_zones), "zones": [zone["id"] for zone in assigned_zones], "objective": "Run audit_queue lanes in priority order (value lanes first) with evidence only; do not edit source files.", "allowed_reads": dedupe_limited(allowed_reads, 80), "required_reads": dedupe_limited(required_reads, 40), "optional_reads": dedupe_limited(optional_reads, 60), "role_queue": role_queue, "audit_queue": audit_queue, "allowed_writes": [f"{HERE.name}/state/task-findings/{task_id}.jsonl"], "required_outputs": ["baseline_health_signals", "findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code", "install_scanner"], "recommended_agent_slot": index, "max_context_files": min(sum(int(zone.get("files") or 0) for zone in assigned_zones) + 40, 240), "max_context_tokens": max_context_tokens, "status": "open"})
+    return tasks
+
+
+def build_focused_tasks(zones: list[dict[str, Any]], records: list[dict[str, Any]], max_context_tokens: int) -> list[dict[str, Any]]:
+    max_focused = policy_limit("max_focused_tasks", 48)
+    pairs: list[tuple[int, int, dict[str, Any], str]] = []
+    for zone in zones:
+        weight = int(zone.get("loc") or 0) + int(zone.get("files") or 0) * 25
+        for lane in focused_lanes_for_zone(zone, records):
+            pairs.append((weight, audit_runtime.lane_priority_key(lane), zone, lane))
+    pairs.sort(key=lambda item: (-item[0], item[1], str(item[2].get("id"))))
+    tasks: list[dict[str, Any]] = []
+    for index, (_, _, zone, lane) in enumerate(pairs[:max_focused], start=1):
+        zone_required, zone_optional = context_reads_for_zone(zone, records)
+        roles = roles_for_lanes([lane])
+        task_id = f"TASK-{index:03d}"
+        audit_queue = [{"zone": zone["id"], "lanes": [lane], "baseline_first": True, "value_first": True}]
+        tasks.append({"id": task_id, "role": roles[0] if roles else "architecture-auditor", "zone": zone["id"], "zones": [zone["id"]], "objective": f"Run the {lane} lane only on {zone['id']} with evidence; go deep on the seeded hotspots; do not edit source files.", "allowed_reads": dedupe_limited(zone.get("globs") or [], 80), "required_reads": dedupe_limited(zone_required, 40), "optional_reads": dedupe_limited(zone_optional, 60), "role_queue": [{"zone": zone["id"], "roles": roles}], "audit_queue": audit_queue, "allowed_writes": [f"{HERE.name}/state/task-findings/{task_id}.jsonl"], "required_outputs": ["baseline_health_signals", "findings", "zone_summary"], "forbidden_actions": ["source_edit", "dependency_change", "delete_code", "install_scanner"], "recommended_agent_slot": index, "max_context_files": min(int(zone.get("files") or 0) + 24, 160), "max_context_tokens": max_context_tokens, "status": "open"})
+    return tasks
+
+
+def agents_plan(args: argparse.Namespace) -> int:
+    ensure_runtime()
+    zones = load_json(state("zones.json"), {"zones": []}).get("zones", [])
+    if not zones:
+        zones_suggest(argparse.Namespace())
+        zones = load_json(state("zones.json"), {"zones": []}).get("zones", [])
+    records, _ = read_jsonl(state("file-tree.jsonl"))
+    max_context_tokens = policy_limit("max_context_tokens", 120000)
+    focused = bool(getattr(args, "focused", False))
+    if focused:
+        tasks = build_focused_tasks(zones, records, max_context_tokens)
+    else:
+        tasks = build_broad_tasks(zones, records, max_context_tokens)
     write_jsonl(state("agent-tasks.jsonl"), tasks)
     update_audit_process_metrics()
     write_reports()
-    print(f"OK    wrote {len(tasks)} agent-slot tasks")
+    mode = "focused single-lane" if focused else "agent-slot"
+    print(f"OK    wrote {len(tasks)} {mode} tasks")
     return 0
 
 
@@ -1688,7 +1759,9 @@ def build_parser() -> argparse.ArgumentParser:
     zones = sub.add_parser("zones").add_subparsers(dest="zones_command", required=True)
     zones.add_parser("suggest").set_defaults(func=zones_suggest)
     agents = sub.add_parser("agents").add_subparsers(dest="agents_command", required=True)
-    agents.add_parser("plan").set_defaults(func=agents_plan)
+    agents_plan_parser = agents.add_parser("plan")
+    agents_plan_parser.add_argument("--focused", action="store_true", help="emit one focused single-lane task per zone lane instead of broad zone tasks")
+    agents_plan_parser.set_defaults(func=agents_plan)
     agents.add_parser("prompts").set_defaults(func=agents_prompts)
     findings = sub.add_parser("findings").add_subparsers(dest="findings_command", required=True)
     finding_add = findings.add_parser("add")

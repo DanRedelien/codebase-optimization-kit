@@ -14,11 +14,17 @@ from typing import Any, Callable
 
 AUDIT_LANE_PRIORITY = [
     "security-risk",
+    "correctness-edge-case",
+    "performance-efficiency",
+    "resource-lifecycle",
+    "concurrency-state-safety",
+    "error-handling-recovery",
+    "reinvented-capability",
     "dependency-risk",
     "authority-drift",
+    "type-contract-safety",
     "dynamic-usage",
     "test-reliability",
-    "type-contract-safety",
     "dead-code",
     "duplicate-logic",
     "structural-quality",
@@ -27,6 +33,12 @@ AUDIT_LANES = set(AUDIT_LANE_PRIORITY)
 AUDIT_POLICY_ORDER = ["discovery-only", "packet-ok", "human-approval", "blocked-direct"]
 AUDIT_LANE_TO_ROLE = {
     "security-risk": "domain-risk-auditor",
+    "correctness-edge-case": "domain-risk-auditor",
+    "performance-efficiency": "performance-auditor",
+    "resource-lifecycle": "performance-auditor",
+    "concurrency-state-safety": "domain-risk-auditor",
+    "error-handling-recovery": "domain-risk-auditor",
+    "reinvented-capability": "architecture-auditor",
     "dependency-risk": "dependency-auditor",
     "authority-drift": "integration-auditor",
     "dynamic-usage": "integration-auditor",
@@ -36,6 +48,24 @@ AUDIT_LANE_TO_ROLE = {
     "duplicate-logic": "duplicate-logic-auditor",
     "structural-quality": "architecture-auditor",
 }
+VALUE_SOURCE_LANES = ["correctness-edge-case", "performance-efficiency", "reinvented-capability"]
+RESOURCE_NAME_TOKENS = {
+    "io", "file", "files", "stream", "streams", "socket", "sockets", "net", "network",
+    "conn", "connection", "connections", "pool", "db", "database", "client", "clients",
+    "session", "sessions", "cache", "buffer", "fd", "handle", "handles", "subprocess",
+    "watcher", "upload", "download", "tempfile", "resource", "resources",
+}
+CONCURRENCY_NAME_TOKENS = {
+    "async", "await", "thread", "threads", "threading", "concurrent", "concurrency",
+    "worker", "workers", "queue", "queues", "lock", "locks", "mutex", "atomic",
+    "parallel", "scheduler", "daemon", "goroutine", "semaphore", "race", "executor",
+}
+ERROR_NAME_TOKENS = {
+    "error", "errors", "exception", "exceptions", "retry", "retries", "recovery",
+    "rollback", "fallback", "handler", "handlers", "middleware", "transaction",
+    "transactions", "catch",
+}
+DEFAULT_MAX_ASSIGNED_LANES_PER_ZONE = 5
 DEFAULT_BASELINE_CAPS = {
     "max_bytes_per_text_file": 262144,
     "total_content_read_bytes": 67108864,
@@ -268,12 +298,37 @@ def security_signals_for_zone(zone: dict[str, Any], records: list[dict[str, Any]
     return sorted(set(signals))[:25]
 
 
+def zone_path_tokens(zone: dict[str, Any], records: list[dict[str, Any]]) -> set[str]:
+    tokens: set[str] = set()
+    for record in zone_records(zone, records):
+        path = str(record.get("path", ""))
+        for part in PurePosixPath(path).parts:
+            stem = PurePosixPath(part).stem.lower()
+            tokens.update(token for token in re.split(r"[^a-z0-9]+", stem) if token)
+    return tokens
+
+
+def value_signal_lanes(zone: dict[str, Any], records: list[dict[str, Any]], has_entrypoint: bool) -> list[str]:
+    tokens = zone_path_tokens(zone, records)
+    has_go = any(str(item.get("language")) == "go" for item in zone_records(zone, records))
+    lanes: list[str] = []
+    if RESOURCE_NAME_TOKENS & tokens or has_entrypoint:
+        lanes.append("resource-lifecycle")
+    if CONCURRENCY_NAME_TOKENS & tokens or has_go:
+        lanes.append("concurrency-state-safety")
+    if ERROR_NAME_TOKENS & tokens or has_entrypoint:
+        lanes.append("error-handling-recovery")
+    return lanes
+
+
 def audit_lanes_for_zone(
     zone: dict[str, Any],
     records: list[dict[str, Any]],
     package_manifests: set[str],
     lockfiles: set[str],
     config_names: set[str],
+    max_assigned_lanes: int | None = None,
+    force_value_lanes: bool = False,
 ) -> list[str]:
     loc = int(zone.get("loc") or 0)
     files = int(zone.get("files") or 0)
@@ -297,10 +352,19 @@ def audit_lanes_for_zone(
         lanes.extend(["structural-quality", "duplicate-logic"])
     if loc >= 12000 or files >= 120:
         lanes.append("type-contract-safety")
+    if has_source:
+        lanes.append("dead-code")
+        lanes.extend(VALUE_SOURCE_LANES)
+        if force_value_lanes:
+            lanes.extend(["resource-lifecycle", "concurrency-state-safety", "error-handling-recovery"])
+        else:
+            lanes.extend(value_signal_lanes(zone, records, has_entrypoint))
     unique = []
     for lane in sorted(lanes, key=lane_priority_key):
         if lane not in unique:
             unique.append(lane)
+    if isinstance(max_assigned_lanes, int) and max_assigned_lanes > 0:
+        unique = unique[:max_assigned_lanes]
     return unique
 
 

@@ -1,0 +1,44 @@
+{
+  "affected_files": [
+    "src/app/exporter.py"
+  ],
+  "category": "resource-lifecycle",
+  "claim": "export_rows() opens a file handle without closing it on the error path, leaking descriptors under repeated failures.",
+  "contracts_touched": [],
+  "counterevidence": [
+    "Process may be short-lived so the leak is bounded; confirm whether export_rows runs in a long-lived worker."
+  ],
+  "created_at": "YYYY-MM-DD",
+  "created_by": "agent-id",
+  "evidence": [
+    "src/app/exporter.py calls open() then returns early on a validation error before close()",
+    "no context manager (with-statement) wraps the handle"
+  ],
+  "evidence_fields": {
+    "root_cause": "File handle is not released on the early-return error path.",
+    "resource_type": "file descriptor",
+    "leak_or_exhaustion_path": "repeated export failures each leak one descriptor until the process hits its fd limit"
+  },
+  "id": "RES-001",
+  "metrics": {
+    "behavioral_parity": null,
+    "complexity_reduction": null,
+    "dead_code_confidence": null,
+    "dependency_reduction": null,
+    "duplicate_logic_reduction": null,
+    "passing_tests": null,
+    "reversibility": null,
+    "risk_score": {
+      "approval_path": "Packet approval before implementation.",
+      "risk_level": 3,
+      "risk_reason": "Resource leak can degrade a long-lived process; fix is a local context manager."
+    }
+  },
+  "primary_lane": "resource-lifecycle",
+  "recommendation": "Wrap the handle in a context manager so it closes on every path.",
+  "related_lanes": [],
+  "status": "candidate",
+  "tests_covering": [],
+  "title": "Leaked file descriptor on export error path",
+  "zone": "Z-example"
+}

@@ -1,0 +1,44 @@
+{
+  "affected_files": [
+    "src/app/parser.py"
+  ],
+  "category": "correctness-edge-case",
+  "claim": "parse_amount() raises IndexError on an empty string instead of returning a handled error.",
+  "contracts_touched": [],
+  "counterevidence": [
+    "Callers may already guard against empty input upstream; confirm no caller passes unfiltered user input."
+  ],
+  "created_at": "YYYY-MM-DD",
+  "created_by": "agent-id",
+  "evidence": [
+    "src/app/parser.py indexes value[0] before checking length",
+    "tests/test_parser.py covers only non-empty inputs"
+  ],
+  "evidence_fields": {
+    "root_cause": "Missing length/empty check before indexing the input string.",
+    "trigger_condition": "parse_amount(\"\") or any zero-length input",
+    "failure_mode": "uncaught IndexError crashes the request instead of a handled validation error"
+  },
+  "id": "CORR-001",
+  "metrics": {
+    "behavioral_parity": null,
+    "complexity_reduction": null,
+    "dead_code_confidence": null,
+    "dependency_reduction": null,
+    "duplicate_logic_reduction": null,
+    "passing_tests": null,
+    "reversibility": null,
+    "risk_score": {
+      "approval_path": "Packet approval before implementation.",
+      "risk_level": 2,
+      "risk_reason": "Local guard added with a direct test; no contract change."
+    }
+  },
+  "primary_lane": "correctness-edge-case",
+  "recommendation": "Guard empty input and return the existing validation error; add an edge-case test.",
+  "related_lanes": [],
+  "status": "candidate",
+  "tests_covering": [],
+  "title": "Empty-input crash in parse_amount",
+  "zone": "Z-example"
+}

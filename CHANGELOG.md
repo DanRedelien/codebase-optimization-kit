@@ -62,6 +62,10 @@ Local maintenance update.
 - Increased agent planning scale to 24 slots and capped normal packing at 3 zones per agent slot.
 - Added QA regression coverage for deep zones, file-like path segments, and large-zone-count agent planning.
 
+### Notes
+
+- Code for this release was written by GPT 5.5 (xHigh).
+
 ## 1.0.2 - 2026-05-26
 
 Local prompt generation update.
@@ -70,3 +74,39 @@ Local prompt generation update.
 - Keeps generated prompt files in one managed location and removes stale `TASK-*.md` files before regenerating them.
 - Directs each discovery agent to write findings into its own `state/task-findings/TASK-XXX.jsonl` file instead of editing `state/findings.jsonl` directly.
 - Moved prompt rendering into `kit_runtime/prompts.py` so `kit.py` stays a CLI wrapper instead of growing another embedded generator.
+
+### Notes
+
+- Code for this release was written by GPT 5.5 (xHigh).
+
+## 1.0.3 - 2026-05-29
+
+Discovery-yield update focused on surfacing real optimization work for cheap models (for example Composer 2.5) without diluting context.
+
+### Added
+
+- Added value lanes for the optimization categories the kit was missing: `correctness-edge-case`, `performance-efficiency`, `resource-lifecycle`, `concurrency-state-safety`, `error-handling-recovery`, and `reinvented-capability`.
+- Wired the previously orphaned `performance-auditor` role to `performance-efficiency`.
+- Added `agents plan --focused`: one uncapped single-lane task per zone lane (value lanes forced, hotspot-seeded) so weak models go deep on one concern.
+- Added configurable budgets in `policies/audit-criteria.json` `policy_limits`: `max_assigned_lanes_per_zone`, `max_zones_per_agent`, `max_agent_slots`, `max_context_tokens`, and `max_focused_tasks`.
+- Added worked finding examples (`finding-performance.json`, `finding-correctness.json`, `finding-reinvented.json`, `finding-resource.json`) and referenced them from `AGENT.md`.
+- Added a per-lane look-for playbook, a severity bar, and an inlined valid example finding to generated discovery prompts.
+
+### Changed
+
+- Reordered audit lane priority so value lanes run before audit-only lanes; `security-risk` stays first but only attaches when security signals exist.
+- Signal-gated `resource-lifecycle`, `concurrency-state-safety`, and `error-handling-recovery`, and capped lanes assigned per zone in broad mode so a larger catalog does not enlarge any single agent's load.
+- Seeded each task's `required_reads` with the zone's largest source files and entrypoints ahead of manifests, configs, and tests.
+- Folded finer audit concerns (contract-boundary, test-gap-hotspot, data-integrity, build-dev-efficiency, observability, configuration-footgun) into existing lane look-fors instead of new lanes.
+- Made a TODO/FIXME a finding only when it marks a concrete defect, risk, or measurable inefficiency; intentional placeholders, including `dormant_planned_code`, are out of scope.
+
+### Fixed
+
+- Fixed generated task `allowed_writes` to point at the task-local `state/task-findings/TASK-XXX.jsonl` output instead of `state/findings.jsonl`, removing a contradiction with the discovery prompt.
+- Fixed focused mode dropping whole optimization categories by bypassing the broad-mode per-zone lane cap.
+- Fixed the `dead-code` lane never being assigned to any zone: it is now a candidate on source zones, so focused mode runs a dedicated dead-code discovery pass (its strict evidence gates are unchanged).
+- Added focused-mode regression coverage to `scripts/qa.py` (single-lane tasks, task-local `allowed_writes`, uncapped lanes including dead-code and value lanes).
+
+### Notes
+
+- Code for this release was written by Opus 4.8 (High) and GPT 5.5 (xHigh).

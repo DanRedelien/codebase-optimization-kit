@@ -1,0 +1,45 @@
+{
+  "affected_files": [
+    "src/app/retry.py"
+  ],
+  "category": "reinvented-capability",
+  "claim": "A hand-rolled retry loop reimplements exponential backoff that an already-vendored dependency provides.",
+  "contracts_touched": [],
+  "counterevidence": [
+    "The custom loop may encode a domain-specific backoff policy; confirm the library covers the same jitter and cap behavior."
+  ],
+  "created_at": "YYYY-MM-DD",
+  "created_by": "agent-id",
+  "evidence": [
+    "src/app/retry.py implements its own sleep/backoff loop with a hard-coded cap",
+    "the project already depends on a retry helper listed in the lockfile"
+  ],
+  "evidence_fields": {
+    "root_cause": "Backoff/retry logic was written by hand instead of using the existing dependency.",
+    "reinvented_behavior": "exponential backoff with retry cap and jitter",
+    "existing_alternative": "the retry helper already present in the dependency lockfile",
+    "equivalence_risk": "must preserve max-attempts, cap, and jitter semantics to keep behavior identical"
+  },
+  "id": "REINV-001",
+  "metrics": {
+    "behavioral_parity": null,
+    "complexity_reduction": null,
+    "dead_code_confidence": null,
+    "dependency_reduction": null,
+    "duplicate_logic_reduction": null,
+    "passing_tests": null,
+    "reversibility": null,
+    "risk_score": {
+      "approval_path": "Packet approval before implementation.",
+      "risk_level": 2,
+      "risk_reason": "Internal swap to an already-available dependency with parity checks."
+    }
+  },
+  "primary_lane": "reinvented-capability",
+  "recommendation": "Replace the hand-rolled loop with the existing retry helper after confirming parity.",
+  "related_lanes": [],
+  "status": "candidate",
+  "tests_covering": [],
+  "title": "Hand-rolled retry duplicates an available dependency",
+  "zone": "Z-example"
+}

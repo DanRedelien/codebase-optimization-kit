@@ -34,7 +34,7 @@
     }
   ],
   "allowed_writes": [
-    ".codebase-optimization-kit/state/findings.jsonl"
+    ".codebase-optimization-kit/state/task-findings/TASK-001.jsonl"
   ],
   "forbidden_actions": [
     "source_edit",

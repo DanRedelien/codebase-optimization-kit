@@ -1,0 +1,45 @@
+{
+  "affected_files": [
+    "src/app/handler.py"
+  ],
+  "category": "performance-efficiency",
+  "claim": "load_config() re-reads and parses settings.json on every request inside the request loop.",
+  "contracts_touched": [],
+  "counterevidence": [
+    "Config could be intended to change at runtime; confirm a reload path is not required before caching."
+  ],
+  "created_at": "YYYY-MM-DD",
+  "created_by": "agent-id",
+  "evidence": [
+    "src/app/handler.py calls load_config() once per request",
+    "load_config opens and json.loads settings.json on each call"
+  ],
+  "evidence_fields": {
+    "root_cause": "Parsed configuration is not cached between requests.",
+    "hotspot_location": "src/app/handler.py request loop",
+    "cost_signal": "one file open and JSON parse per request",
+    "cheaper_alternative": "parse once at startup or memoize with an mtime check"
+  },
+  "id": "PERF-001",
+  "metrics": {
+    "behavioral_parity": null,
+    "complexity_reduction": null,
+    "dead_code_confidence": null,
+    "dependency_reduction": null,
+    "duplicate_logic_reduction": null,
+    "passing_tests": null,
+    "reversibility": null,
+    "risk_score": {
+      "approval_path": "Packet approval before implementation.",
+      "risk_level": 2,
+      "risk_reason": "Local internal change behind the same output."
+    }
+  },
+  "primary_lane": "performance-efficiency",
+  "recommendation": "Cache parsed config; verify outputs are unchanged.",
+  "related_lanes": [],
+  "status": "candidate",
+  "tests_covering": [],
+  "title": "Repeated full re-parse of config on every request",
+  "zone": "Z-example"
+}

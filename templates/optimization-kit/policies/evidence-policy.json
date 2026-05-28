@@ -25,5 +25,10 @@
     "observed behavior or static reference",
     "counterevidence or uncertainty"
   ],
+  "out_of_scope": [
+    "A TODO/FIXME comment is not a finding by itself.",
+    "Intentional placeholders for planned features, including dormant_planned_code, are out of scope unless they mark a concrete defect, security risk, or measurable inefficiency with evidence.",
+    "Cosmetic style and subjective preference are out of scope."
+  ],
   "schema_version": "1.0"
 }

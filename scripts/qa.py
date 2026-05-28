@@ -258,10 +258,50 @@ def qa_runtime() -> None:
         for lane in {"structural-quality", "test-reliability", "authority-drift"}:
             if lane not in lanes:
                 raise QAError(f"agents plan did not include baseline audit lane: {lane}")
+        if not ({"correctness-edge-case", "performance-efficiency", "reinvented-capability"} & lanes):
+            raise QAError("agents plan did not add value lanes to source zones")
         if "security-risk" in lanes:
             raise QAError("agents plan should not add security-risk without security-sensitive path signals")
-        if any(lane not in {"security-risk", "dependency-risk", "authority-drift", "dynamic-usage", "test-reliability", "type-contract-safety", "dead-code", "duplicate-logic", "structural-quality"} for lane in lanes):
+        known_lanes = {
+            "security-risk", "correctness-edge-case", "performance-efficiency", "resource-lifecycle",
+            "concurrency-state-safety", "error-handling-recovery", "reinvented-capability", "dependency-risk",
+            "authority-drift", "type-contract-safety", "dynamic-usage", "test-reliability", "dead-code",
+            "duplicate-logic", "structural-quality",
+        }
+        if any(lane not in known_lanes for lane in lanes):
             raise QAError(f"agents plan included unknown audit lane: {sorted(lanes)}")
+        for task in tasks:
+            for item in task.get("audit_queue", []):
+                if len(item.get("lanes", [])) > 5:
+                    raise QAError(f"audit_queue item exceeds max_assigned_lanes_per_zone: {item}")
+        for task in tasks:
+            expected_write = f".codebase-optimization-kit/state/task-findings/{task['id']}.jsonl"
+            if task.get("allowed_writes") != [expected_write]:
+                raise QAError(f"task allowed_writes is not task-local: {task.get('id')} -> {task.get('allowed_writes')}")
+
+        kit_cmd(kit, "agents", "plan", "--focused")
+        focused_tasks = [json.loads(line) for line in (kit / "state" / "agent-tasks.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+        if not focused_tasks:
+            raise QAError("focused plan produced no tasks")
+        focused_lanes_by_zone: dict[str, set[str]] = {}
+        for task in focused_tasks:
+            queue = task.get("audit_queue", [])
+            if len(queue) != 1 or len(queue[0].get("lanes", [])) != 1:
+                raise QAError(f"focused task is not single-lane: {task.get('id')}")
+            expected_write = f".codebase-optimization-kit/state/task-findings/{task['id']}.jsonl"
+            if task.get("allowed_writes") != [expected_write]:
+                raise QAError(f"focused task allowed_writes is not task-local: {task.get('id')} -> {task.get('allowed_writes')}")
+            focused_lanes_by_zone.setdefault(task["zone"], set()).add(queue[0]["lanes"][0])
+        src_zone_lanes = focused_lanes_by_zone.get("Z-src-core", set())
+        if "dead-code" not in src_zone_lanes:
+            raise QAError("focused mode did not include the dead-code lane on a source zone")
+        if not ({"correctness-edge-case", "performance-efficiency", "reinvented-capability"} <= src_zone_lanes):
+            raise QAError(f"focused mode missing forced value lanes on a source zone: {sorted(src_zone_lanes)}")
+        if len(src_zone_lanes) <= 5:
+            raise QAError(f"focused mode should exceed the broad per-zone cap of 5: {sorted(src_zone_lanes)}")
+        kit_cmd(kit, "agents", "plan")
+        tasks = [json.loads(line) for line in (kit / "state" / "agent-tasks.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+
         bad_task = dict(tasks[0])
         bad_queue = [dict(item) for item in bad_task.get("audit_queue", [])]
         bad_queue[0] = dict(bad_queue[0], lanes=["not-a-lane"])

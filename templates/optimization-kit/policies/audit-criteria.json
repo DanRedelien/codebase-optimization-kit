@@ -19,11 +19,17 @@
   },
   "lane_priority": [
     "security-risk",
+    "correctness-edge-case",
+    "performance-efficiency",
+    "resource-lifecycle",
+    "concurrency-state-safety",
+    "error-handling-recovery",
+    "reinvented-capability",
     "dependency-risk",
     "authority-drift",
+    "type-contract-safety",
     "dynamic-usage",
     "test-reliability",
-    "type-contract-safety",
     "dead-code",
     "duplicate-logic",
     "structural-quality"
@@ -42,6 +48,39 @@
       ],
       "tool_hints": [
         "Compare existing docs, tests, schemas, and public contracts only."
+      ]
+    },
+    "concurrency-state-safety": {
+      "default_risk_floor": 4,
+      "finding_category": "concurrency-state-safety",
+      "implementation_policy": "human-approval",
+      "required_evidence": [
+        "root_cause",
+        "shared_state",
+        "race_or_ordering",
+        "trigger_interleaving",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Check race conditions, shared mutable state, non-atomic writes, lock ordering, async tasks without await or cancel handling.",
+        "Treat as high blast radius; require human approval before implementation."
+      ]
+    },
+    "correctness-edge-case": {
+      "default_risk_floor": 2,
+      "finding_category": "correctness-edge-case",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "trigger_condition",
+        "failure_mode",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Probe existing inputs: empty, null/None, missing keys, wrong types, large numbers, timezone/DST, Unicode, path separators, partial failures.",
+        "Report a concrete failure path, not style; include data-integrity risks like non-atomic writes or duplicate IDs."
       ]
     },
     "dead-code": {
@@ -100,7 +139,73 @@
         "counterevidence_or_gap"
       ],
       "tool_hints": [
-        "Check existing reflection, registry, config, plugin, eval, and exec paths."
+        "Check existing reflection, registry, config, plugin, eval, and exec paths; include configuration-footgun signals like cwd/platform dependence or path-separator mismatch."
+      ]
+    },
+    "error-handling-recovery": {
+      "default_risk_floor": 3,
+      "finding_category": "error-handling-recovery",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "swallow_or_recovery_gap",
+        "affected_behavior",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Check swallowed exceptions, broad except, silent fallback, lost root cause, incorrect rollback after partial write, and unstructured errors that block diagnosis.",
+        "Tie each gap to a concrete failure or debugging cost."
+      ]
+    },
+    "performance-efficiency": {
+      "default_risk_floor": 2,
+      "finding_category": "performance-efficiency",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "hotspot_location",
+        "cost_signal",
+        "cheaper_alternative",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Look for algorithmic complexity, redundant loops, repeated I/O/DB/API calls, N+1, missing batching/caching, heavy serialization or re-parsing, and slow build/test flows.",
+        "Cost must be measurable or clearly explained; name a cheaper existing approach."
+      ]
+    },
+    "reinvented-capability": {
+      "default_risk_floor": 2,
+      "finding_category": "reinvented-capability",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "reinvented_behavior",
+        "existing_alternative",
+        "equivalence_risk",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Flag hand-rolled parsers, retry, date/path/glob handling, validation, crypto, caching, diffing, or CLI parsing where a stdlib or existing mature dependency is safer.",
+        "Confirm an already-available alternative; do not invent new dependencies casually."
+      ]
+    },
+    "resource-lifecycle": {
+      "default_risk_floor": 3,
+      "finding_category": "resource-lifecycle",
+      "implementation_policy": "packet-ok",
+      "required_evidence": [
+        "root_cause",
+        "resource_type",
+        "leak_or_exhaustion_path",
+        "affected_files",
+        "counterevidence_or_gap"
+      ],
+      "tool_hints": [
+        "Check unclosed files/sockets/handles, memory leaks, unbounded queues/caches, and missing timeout/cancellation/retry budget.",
+        "Use existing code paths; no new profilers required."
       ]
     },
     "security-risk": {
@@ -145,7 +250,7 @@
         "counterevidence_or_gap"
       ],
       "tool_hints": [
-        "Use existing test commands and observed flaky or missing coverage evidence."
+        "Focus on missing tests for a risky hotspot or edge case that can actually break, not the absence of tests in general."
       ]
     },
     "type-contract-safety": {
@@ -160,7 +265,7 @@
         "counterevidence_or_gap"
       ],
       "tool_hints": [
-        "Check existing schemas, public interfaces, casts, and runtime data assumptions."
+        "Check unchecked input/output at CLI args, JSON schema, public API, and plugin interface boundaries, plus casts and runtime data assumptions."
       ]
     }
   },
@@ -171,9 +276,14 @@
     "blocked-direct"
   ],
   "policy_limits": {
-    "max_lanes": 9,
+    "max_lanes": 15,
     "max_required_evidence_fields_per_lane": 6,
-    "max_tool_hints_per_lane": 2
+    "max_tool_hints_per_lane": 2,
+    "max_assigned_lanes_per_zone": 5,
+    "max_zones_per_agent": 3,
+    "max_agent_slots": 24,
+    "max_context_tokens": 120000,
+    "max_focused_tasks": 48
   },
   "schema_version": "1.0"
 }
